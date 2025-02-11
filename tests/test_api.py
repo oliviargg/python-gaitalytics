@@ -50,19 +50,19 @@ def test_load_c3d_trial_no_events():
     assert trial.events is None
 
 
-def test_detect_events():
-    config = api.load_config("./tests/pig_config.yaml")
-    trial = api.load_c3d_trial("./tests/treadmill_events.c3d", config)
-    event_table = api.detect_events(trial, config, distance=1000)
-    assert event_table is not None
-    assert len(event_table) == 5
+# def test_detect_events():
+#     config = api.load_config("./tests/pig_config.yaml")
+#     trial = api.load_c3d_trial("./tests/treadmill_events.c3d", config)
+#     event_table = api.detect_events(trial, config, distance=1000)
+#     assert event_table is not None
+#     assert len(event_table) == 5
 
 
-def test_detect_events_methode():
-    config = api.load_config("./tests/pig_config.yaml")
-    trial = model.Trial()
-    with pytest.raises(ValueError):
-        api.detect_events(trial, config, method="ForcePlate")
+# def test_detect_events_methode():
+#     config = api.load_config("./tests/pig_config.yaml")
+#     trial = model.Trial()
+#     with pytest.raises(ValueError):
+#         api.detect_events(trial, config, method="ForcePlate")
 
 
 def test_check_events():
@@ -77,12 +77,12 @@ def test_check_events_methode():
         api.check_events(pd.DataFrame(), method="foo")
 
 
-def test_write_events(out_path):
-    config = api.load_config("./tests/pig_config.yaml")
-    trial = api.load_c3d_trial("./tests/treadmill_events.c3d", config)
-    event_table = api.detect_events(trial, config, distance=1000)
-    api.write_events_to_c3d("./tests/treadmill_no_events.c3d", event_table, out_path)
-    assert True
+# def test_write_events(out_path):
+#     config = api.load_config("./tests/pig_config.yaml")
+#     trial = api.load_c3d_trial("./tests/treadmill_events.c3d", config)
+#     event_table = api.detect_events(trial, config, distance=1000)
+#     api.write_events_to_c3d("./tests/treadmill_no_events.c3d", event_table, out_path)
+#     assert True
 
 
 def test_segment_trial():

@@ -92,39 +92,100 @@ def load_c3d_trial(
     return trial
 
 
+def get_event_detector(
+    method: str, configs: mapping.MappingConfigs, offset: float = 0, trial_ref=None
+) -> events.EventDetector:
+    """Builds an EventDetector object whose method is the same for all event type
+
+    Args:
+        method: event detection method
+                - "Zen" will test the Zeni method
+                - "Des" will test the Desailly method
+                - "AC1" to "AC6" will test the Autocorrelation 1 to 6 methods
+        config: The mapping configurations
+        offset: offset to be applied to all event timings, default is 0
+        trial_ref: object of model.Trial, reference trial if the event detection requires a reference
+
+    Returns:
+        EventDetector object
+    """
+    return events.EventDetectorBuilder.get_event_detector(
+        configs, method, offset, trial_ref
+    )
+
+
+def get_mixed_event_detector(
+    method_to_l: str,
+    method_to_r: str,
+    method_hs_l: str,
+    method_hs_r: str,
+    configs: mapping.MappingConfigs,
+    offset: float = 0,
+    trial=None,
+) -> events.EventDetector:
+    """Builds an EventDetector object whose method is the same for all event type
+
+    Args:
+        method_to_l: event detection method for left toe off
+        method_to_r: event detection method for right toe off
+        method_hs_l: event detection method for left heel strike
+        method_hs_r: event detection method for right heel strike
+                - "Zen" will test the Zeni method
+                - "Des" will test the Desailly method
+                - "AC1" to "AC6" will test the Autocorrelation 1 to 6 methods
+        config: The mapping configurations
+        offset: offset to be applied to all event timings, default is 0
+        trial_ref: object of model.Trial, reference trial if the event detection requires a reference
+
+    Returns:
+        EventDetector object
+    """
+    return events.EventDetectorBuilder.get_mixed_event_detector(
+        configs, method_to_l, method_to_r, method_hs_l, method_hs_r, offset, trial
+    )
+
+
 def detect_events(
-    trial: model.Trial, config: mapping.MappingConfigs, method: str = "Marker", **kwargs
+    trial: model.Trial, event_detector: events.EventDetector
 ) -> pd.DataFrame:
     """Detects the events in the trial.
 
     Args:
         trial: The trial to detect the events for.
-        config: The mapping configurations
-        method: The method to use for detecting the events.
-                Currently, only "Marker" is supported, which implements
-                the method from Zenis et al. 2008.
-                Default is "Marker".
-        **kwargs:
-            - height: The height of peaks. Default = None
-            - threshold: The threshold of peaks. Default = None
-            - distance: The min distance in frames between events. Default = None
-            - rel_height: The relative height of peak. Default = 0.5
+        event_detector: object containing detection methods (optimized or not) for each event type
 
     Returns:
         A DataFrame containing the detected events.
-
-    Raises:
-        ValueError: If the method is not supported.
     """
 
-    match method:
-        case "Marker":
-            method_obj = events.MarkerEventDetection(config, **kwargs)
-        case _:
-            raise ValueError(f"Unsupported method: {method}")
-
-    event_table = method_obj.detect_events(trial)
+    event_table = event_detector.detect_events(trial)
     return event_table
+
+
+def find_optimal_detectors(
+    trial_ref: model.Trial,
+    config: mapping.MappingConfigs,
+    method_list: list[str] = ["Zen", "Des", "AC1", "AC2", "AC3", "AC4", "AC5", "AC6"],
+) -> events.EventDetector:
+    """Finds the set of best methods that best detect all Gait Event types on a short labeled reference trial
+
+    Args:
+        trial_ref: The reference trial with some labeled gait events
+        config: The mapping configurations
+        method_list: list of methods it tests for
+                        - "Zen" will test the Zeni method
+                        - "Des" will test the Desailly method
+                        - "AC1" to "AC6" will test the Autocorrelation 1 to 6 methods
+    Returns:
+        An EventDetector object with optimized detection methods for each gait event
+    """
+    method_list_mapping = [
+        events.EventDetectorBuilder.get_method(name) for name in method_list
+    ]
+    auto_obj = events.AutoEventDetection(config, trial_ref, method_list_mapping)
+    event_detector = auto_obj.get_optimised_event_detectors()
+    # auto_obj.plot_accuracies()
+    return event_detector
 
 
 def check_events(event_table: pd.DataFrame, method: str = "sequence"):
