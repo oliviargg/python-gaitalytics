@@ -427,7 +427,7 @@ class BaseOptimisedEventDetection(BaseEventDetection, ABC):
         configs: mapping.MappingConfigs,
         context: str,
         label: str,
-        offset: float,
+        offset: float = 0,
         trial_ref: Union[None, model.Trial] = None,
     ):
         """Initializes a new instance of the BaseOptimisedEventDetection class for an event type on a single side.
@@ -1437,7 +1437,7 @@ class AutoEventDetection:
                 event_detectors = []
                 for idx, method in enumerate(self.method_list):
                     event_detector = method(
-                        self._configs, context, label, self.trial_ref
+                        self._configs, context, label, trial_ref = self.trial_ref
                     )  ##an instance for each side
                     if label in event_detector._EVENT_TYPES:
                         times = event_detector._detect_events(self.trial_ref)
