@@ -22,6 +22,10 @@ LEFT = "Left"
 RIGHT = "Right"
 SIDES = [LEFT, RIGHT]
 EVENT_TYPES = [FOOT_STRIKE, FOOT_OFF]
+TIME_COLUMN = io._EventInputFileReader.COLUMN_TIME
+LABEL_COLUMN = io._EventInputFileReader.COLUMN_LABEL
+CONTEXT_COLUMN = io._EventInputFileReader.COLUMN_CONTEXT
+ICON_COLUMN = io._EventInputFileReader.COLUMN_ICON
 
 
 class _BaseEventChecker(ABC):
@@ -53,9 +57,9 @@ class SequenceEventChecker(_BaseEventChecker):
     It checks the sequence of event labels and contexts.
     """
 
-    _TIME_COLUMN = io._EventInputFileReader.COLUMN_TIME
-    _LABEL_COLUMN = io._EventInputFileReader.COLUMN_LABEL
-    _CONTEXT_COLUMN = io._EventInputFileReader.COLUMN_CONTEXT
+    _TIME_COLUMN = TIME_COLUMN
+    _LABEL_COLUMN = LABEL_COLUMN
+    _CONTEXT_COLUMN = CONTEXT_COLUMN
     _SEQUENCE = pd.DataFrame(
         {
             "current": [
@@ -174,10 +178,10 @@ class SequenceEventChecker(_BaseEventChecker):
 
 
 class BaseEventDetection(ABC):
-    _TIME_COLUMN = io._EventInputFileReader.COLUMN_TIME
-    _LABEL_COLUMN = io._EventInputFileReader.COLUMN_LABEL
-    _CONTEXT_COLUMN = io._EventInputFileReader.COLUMN_CONTEXT
-    _ICON_COLUMN = io._EventInputFileReader.COLUMN_ICON
+    _TIME_COLUMN = TIME_COLUMN
+    _LABEL_COLUMN = LABEL_COLUMN
+    _CONTEXT_COLUMN = CONTEXT_COLUMN
+    _ICON_COLUMN = ICON_COLUMN
 
     """Abstract class for event detectors.
 
@@ -347,71 +351,63 @@ class BaseEventDetection(ABC):
             return [1, 1, 1]
 
 
-# TODO: rename GRF classes
-class Grf1EventDetection(BaseEventDetection):
-    def __init__(self, configs, context, label):
-        super().__init__(configs, context, label)
-        self.frate = 100  # TODO Hz --> take it from c3d file. How?
+class GrfEventDetection(BaseEventDetection):
+    def __init__(self, configs, context, label, offset=0):
+        super().__init__(configs, context, label, offset)
+        self.frate = 100  # TODO Hz --> take it from c3d file.
 
-    def _get_sliding_window(self, time, signal, width, start):
-        if self._label == FOOT_OFF:
-            return signal[(time <= start) & (time > start - width)]
+    def _get_range(self, group):
+        if self._label == FOOT_STRIKE:
+            return range(len(group) - 1)
         else:
-            return signal[(time >= start) & (time < start + width)]
+            return range(len(group) - 1, 0, -1)
 
-    def _get_condition(self, time, start, width):
-        if self._label == FOOT_OFF:
-            return start - width >= time[0]
-        else:
-            return start + width <= time[-1]
-
-    def _get_start_point(self, time):
-        return time[0] if self._label == FOOT_STRIKE else time[-1]
-
-    def _get_end_point(self, start, width):
-        return start + width if self._label == FOOT_STRIKE else start - width
-
-    def _move_sliding_window(self, start):
-        return (
-            start + (1 / self.frate)
-            if self._label == FOOT_STRIKE
-            else start - (1 / self.frate)
+    def processing_masked_signal(self, grf_signal):
+        nan_mask = np.isnan(grf_signal.data).astype(int)
+        non_nan_groups = np.split(
+            np.arange(len(grf_signal)), np.where(nan_mask[:-1] & ~nan_mask[1:])[0] + 1
         )
+
+        min_duration = 60
+        for group in non_nan_groups:
+            if len(group) < min_duration:
+                grf_signal[group] = np.nan
+
+        nan_mask_ = np.isnan(grf_signal.data).astype(int)
+        non_nan_groups_ = np.split(
+            np.arange(len(grf_signal)), np.where(nan_mask_[:-1] & ~nan_mask_[1:])[0] + 1
+        )
+
+        zero_threshold = 5
+        for group_ in non_nan_groups_:
+            close_to_zero = np.abs(grf_signal[group_].data) < zero_threshold
+            # print(grf_signal[group_].data)
+            for i, j in enumerate(self._get_range(group_)):
+                if close_to_zero[j] and close_to_zero[self._get_range(group_)[i + 1]]:
+                    grf_signal[group_[j]] = np.nan
+                elif np.isnan(grf_signal[group_].data[j]):
+                    continue
+                else:
+                    break
+        return grf_signal
 
     def _detect_events(self, trial):
-        # based on https://doi.org/10.1016/j.gaitpost.2006.09.077
-        print(f"\n\t {self._label} {self._context}\n")
-        markers = trial.get_data(model.DataCategory.MARKERS)
-        GRF_3d = (
-            markers.sel(channel="LNormalisedGRF")
+        GRF_3d = mocap.get_marker_data(
+            trial,
+            self._configs,
+            mapping.MappedMarkers.L_GRF
             if self._context == LEFT
-            else markers.sel(channel="RNormalisedGRF")
+            else mapping.MappedMarkers.R_GRF,
         )
         GRF = GRF_3d.loc["z"]
-        times = []
-        GRF_ = (
-            np.nan_to_num(GRF) if np.sum(np.isnan(GRF)) > 0 else np.copy(GRF)
-        )  # check for Nans
-        # b, a = sp.signal.butter(4, 20, fs=self.frate)
-        # GRF_filt = sp.signal.filtfilt(b, a, GRF_)
-        GRF_filt = GRF_
+        GRF_processed = self.processing_masked_signal(GRF)
+        nan_mask = np.isnan(GRF_processed.data).astype(int)
+        if self._label == FOOT_STRIKE:
+            index = np.where((~nan_mask[1:]) & (nan_mask[:-1]))[0] + 1
+        else:
+            index = np.where((nan_mask[1:]) & (~nan_mask[:-1]))[0]
         time_ = GRF.time.data
-        sd = np.std(GRF_filt[time_ <= time_[0] + 0.1])
-        width = 0.04  # 40 ms
-        start = self._get_start_point(time_)
-        window = GRF_filt[time_ < self._get_end_point(start, width)]
-        prev_mean = np.mean(window)
-        while self._get_condition(time_, start, width):
-            start = self._move_sliding_window(start)
-            print(start)
-            window = self._get_sliding_window(time_, GRF_filt, width, start)
-            threshold = prev_mean + 3 * sd
-            print("\t", threshold)
-            print("\t", window)
-            if np.sum(window <= threshold) == 0:
-                times.append(start)
-            prev_mean = np.mean(window)
-        events = np.array(times)
+        events = time_[index]
         return events
 
 
@@ -441,7 +437,13 @@ class BaseOptimisedEventDetection(BaseEventDetection, ABC):
         super().__init__(configs, context, label, offset)
         self.trial_ref = trial_ref
         self.ref_events = (
-            self.get_event_times(trial_ref.events) if trial_ref is not None else None
+            None
+            if (
+                trial_ref is None
+                or trial_ref.events is None
+                or trial_ref.events.size == 0
+            )
+            else self.get_event_times(trial_ref.events)
         )
         self.min_dist = self.get_min_dist()
         self.frate = 100  # TODO Hz --> take it from c3d file. How?
@@ -456,9 +458,9 @@ class BaseOptimisedEventDetection(BaseEventDetection, ABC):
             np.ndarray: array containing the event timings for the event and side of the instance
         """
         events = events_df.loc[
-            (events_df["context"] == self._context)
-            & (events_df["label"] == self._label),
-            "time",
+            (events_df[self._CONTEXT_COLUMN] == self._context)
+            & (events_df[self._LABEL_COLUMN] == self._label),
+            self._TIME_COLUMN,
         ]
         return events.to_numpy()
 
@@ -503,17 +505,17 @@ class BaseOptimisedEventDetection(BaseEventDetection, ABC):
                 out_ = out_[out_ != ev]
                 in_ = np.append(in_, ev)
                 diff_list = np.append(diff_list, ev_ref - ev)
-        offset = self._compute_offset(
-            np.mean(diff_list), self._compute_quantiles(diff_list)
-        )
-        idx = np.argwhere(np.abs(diff_list - offset) <= rad)
-        idx_ = np.argwhere(np.abs(diff_list - offset) > rad)
-        diff_list = diff_list[idx]
-        out_ = np.append(out_, in_[idx_])
-        missed += len(in_[idx_])
         if len(diff_list) == 0:
             return np.zeros(len(events_ref)), 1.0, 0
         else:
+            offset = self._compute_offset(
+                np.mean(diff_list), self._compute_quantiles(diff_list)
+            )
+            idx = np.argwhere(np.abs(diff_list - offset) <= rad)
+            idx_ = np.argwhere(np.abs(diff_list - offset) > rad)
+            diff_list = diff_list[idx]
+            out_ = np.append(out_, in_[idx_])
+            missed += len(in_[idx_])
             return (
                 np.squeeze(diff_list),
                 missed / len(events_ref),
@@ -575,7 +577,7 @@ class BaseOptimisedEventDetection(BaseEventDetection, ABC):
 
 # TODO: remove this class (only there for testing)
 class GrfTestEventDetection(BaseOptimisedEventDetection):
-    def __init__(self, configs, context, label, offset, trial_ref=None):
+    def __init__(self, configs, context, label, offset=0, trial_ref=None):
         super().__init__(configs, context, label, offset, trial_ref)
         self.frate = 100  # TODO Hz --> take it from c3d file. How?
 
@@ -615,37 +617,16 @@ class GrfTestEventDetection(BaseOptimisedEventDetection):
                     continue
                 else:
                     break
-
-        # fig, axs = plt.subplots(2, 1, figsize = (10, 8), sharex = True)
-        # fig.tight_layout()
-        # nan_mask__ = np.isnan(grf_signal.data).astype(int)
-        # non_nan_groups__ = np.split(
-        #     np.arange(len(grf_signal)), np.where(nan_mask__[:-1] & ~nan_mask__[1:])[0] + 1
-        # )
-        # max_length =  np.max([len(group__) for group__ in non_nan_groups__])
-        # for l, group__ in enumerate(non_nan_groups__):
-        #     signal_ = np.zeros(max_length)
-        #     deriv_ = np.zeros(max_length)
-        #     signal = grf_signal[group__].data
-        #     signal = signal[~np.isnan(signal)]
-        #     len_ = len(signal)
-        #     if len_ > 0:
-        #         signal_[-len_:] = signal
-        #         deriv = (signal[1:] - signal[:-1])*self.frate
-        #         deriv_[-len_+1:] = deriv
-        #         axs[0].plot(signal_, label = l)
-        #         axs[1].plot(deriv_)
-        # axs[0].legend(loc="center left")
-        # plt.show()
         return grf_signal
 
     def _detect_events(self, trial):
         print(f"\n\t {self._label} {self._context}\n")
-        markers = trial.get_data(model.DataCategory.MARKERS)
-        GRF_3d = (
-            markers.sel(channel="LNormalisedGRF")
+        GRF_3d = mocap.get_marker_data(
+            trial,
+            self._configs,
+            mapping.MappedMarkers.L_GRF
             if self._context == LEFT
-            else markers.sel(channel="RNormalisedGRF")
+            else mapping.MappedMarkers.R_GRF,
         )
         GRF = GRF_3d.loc["z"]
         GRF_processed = self.processing_masked_signal(GRF)
@@ -708,7 +689,7 @@ class PeakEventDetection(BaseOptimisedEventDetection, ABC):
             for p in prominences:
                 if d >= 1:
                     index, _ = sp.signal.find_peaks(-signal, distance=d, prominence=p)
-                    if self.trial_ref is not None:
+                    if self.trial_ref is not None and self.trial_ref.events is not None:
                         times = (
                             self.trial_ref.get_data(model.DataCategory.MARKERS)[
                                 :, :, index
@@ -716,6 +697,10 @@ class PeakEventDetection(BaseOptimisedEventDetection, ABC):
                             .coords["time"]
                             .values
                         )
+                        times = times[
+                            (times < self.trial_ref.events[self._TIME_COLUMN].max())
+                            & (times > self.trial_ref.events[self._TIME_COLUMN].min())
+                        ]
                     else:
                         raise ValueError("Reference trial must be provided")
                     acc, missed, excess = self._get_accuracy(times)
@@ -981,90 +966,96 @@ class AC(PeakEventDetection):
         """
         Initializes an instance of class AC using the vertical componenent of the heel marker and the horizontal distance between the sacrum and the heel to detect heel strikes
         """
-        cls._EVENT_TYPES = [FOOT_STRIKE]
-        cls._CODE = "AC1"
-        return cls(
+        instance = cls(
             configs,
             context,
             label,
             functions=[cls.Heel_z, cls.Sacr_Heel_x],
             trial_ref=trial_ref,
         )
+        instance._EVENT_TYPES = [FOOT_STRIKE]
+        instance._CODE = "AC1"
+        return instance
 
     @classmethod
     def get_AC2(cls, configs, context, label, trial_ref):
         """
         Initializes an instance of class AC using the vertical componenent of the heel marker, the horizontal distance between the sacrum and the heel, and the angle of the foot to detect heel strikes
         """
-        cls._EVENT_TYPES = [FOOT_STRIKE]
-        cls._CODE = "AC2"
-        return cls(
+        instance = cls(
             configs,
             context,
             label,
             functions=[cls.Heel_z, cls.Sacr_Heel_x, cls.Foot_alpha],
             trial_ref=trial_ref,
         )
+        instance._EVENT_TYPES = [FOOT_STRIKE]
+        instance._CODE = "AC2"
+        return instance
 
     @classmethod
     def get_AC3(cls, configs, context, label, trial_ref):
         """
         Initializes an instance of class AC using the hortizontal distance between the anterior hips and the horizontal distance between the sacrum and the heel to detect heel strikes
         """
-        cls._EVENT_TYPES = [FOOT_STRIKE]
-        cls._CODE = "AC3"
-        return cls(
+        instance = cls(
             configs,
             context,
             label,
             functions=[cls.Hip_x, cls.Sacr_Heel_x],
             trial_ref=trial_ref,
         )
+        instance._EVENT_TYPES = [FOOT_STRIKE]
+        instance._CODE = "AC3"
+        return instance
 
     @classmethod
     def get_AC4(cls, configs, context, label, trial_ref):
         """
         Initializes an instance of class AC using the vertical componenent of the heel marker, the horizontal distance between the sacrum and the heel, the angle of the foot and the horizontal distance between the anterior hips to detect heel strikes
         """
-        cls._EVENT_TYPES = [FOOT_STRIKE]
-        cls._CODE = "AC4"
-        return cls(
+        instance = cls(
             configs,
             context,
             label,
             functions=[cls.Heel_z, cls.Sacr_Heel_x, cls.Foot_alpha, cls.Hip_x],
             trial_ref=trial_ref,
         )
+        instance._EVENT_TYPES = [FOOT_STRIKE]
+        instance._CODE = "AC4"
+        return instance
 
     @classmethod
     def get_AC5(cls, configs, context, label, trial_ref):
         """
         Initializes an instance of class AC using the vertical componenent of the toe marker and the horizontal distance between the sacrum and the toe to detect toe offs
         """
-        cls._EVENT_TYPES = [FOOT_OFF]
-        cls._CODE = "AC5"
-        return cls(
+        instance = cls(
             configs,
             context,
             label,
             functions=[cls.Toe_z, cls.Sacr_Toe_x],
             trial_ref=trial_ref,
         )
+        instance._EVENT_TYPES = [FOOT_OFF]
+        instance._CODE = "AC5"
+        return instance
 
     @classmethod
     def get_AC6(cls, configs, context, label, trial_ref):
         """
         Initializes an instance of class AC using the vertical componenent of the toe marker, the horizontal distance between the sacrum and the toe, and the angle of the foot to detect toe offs
         """
-        cls._EVENT_TYPES = [FOOT_OFF]
-        cls._CODE = "AC6"
-        return cls(
+        instance = cls(
             configs,
             context,
             label,
             functions=[cls.Toe_z, cls.Sacr_Toe_x, cls.Foot_alpha],
             trial_ref=trial_ref,
         )
+        instance._EVENT_TYPES = [FOOT_OFF]
+        instance._CODE = "AC6"
+        return instance
 
     @staticmethod
     def p_function(param: np.ndarray, param_ref: np.ndarray) -> np.ndarray:
@@ -1268,7 +1259,6 @@ class EventDetector:
         self.to_right = to_right
 
     def detect_events(
-        # TODO: add option to set own parameters
         self,
         trial: model.Trial,
     ) -> pd.DataFrame:
@@ -1318,14 +1308,6 @@ class EventDetector:
         ).reset_index(drop=True)
         return events
 
-    # @staticmethod
-    # def add_events_to_trial(trial: model.Trial, events: pd.DataFrame):
-    #     """
-    #     Adds a table of events as a trial's attribute
-    #     """
-    #     trial_with_events = trial.events(events)
-    #     return trial_with_events
-
 
 class EventDetectorBuilder:
     """
@@ -1341,7 +1323,7 @@ class EventDetectorBuilder:
         "AC4": AC.get_AC4,
         "AC5": AC.get_AC5,
         "AC6": AC.get_AC6,
-        "GRF": GrfTestEventDetection,  # TODO: switch back to GRF2...
+        "GRF": GrfEventDetection,
     }
 
     @classmethod
@@ -1388,6 +1370,208 @@ class EventDetectorBuilder:
         )
 
 
+class ReferenceFromGrf:
+    """
+    Class for creation of reference events using GRF data on a given trial.
+    To create such reference, we select 15 gait cycles that to meet the following empirical conditions:
+    1. Events are regularly spaced (not too close and not too far apart)
+    2. Detected events should have a GRF value close to 0
+    3. Event should be followed/preceded by a large slope
+    4. Order of events is correct
+    """
+
+    _TIME_COLUMN = TIME_COLUMN
+    _LABEL_COLUMN = LABEL_COLUMN
+    _CONTEXT_COLUMN = CONTEXT_COLUMN
+    _ICON_COLUMN = ICON_COLUMN
+    _COND_1 = "cond_1"
+    _COND_2 = "cond_2"
+    _COND_3 = "cond_3"
+    _COND_4 = "cond_4"
+    _COND_TOTAL = "total"
+    _REF_EVENTS = "ref"
+
+    def __init__(self, grf_events: pd.DataFrame, trial: model.Trial):
+        """Initialization of an instance of the ReferenceFromGrf class
+
+        Args:
+            grf_events: events detected with the GRF-based algorithm
+            trial: trial whose detcted events with GRF-algorithm will be used as reference
+        """
+        self.grf_events = grf_events
+        self.trial = trial
+        self.l_GRF = trial.get_data(model.DataCategory.MARKERS).sel(
+            channel="LNormalisedGRF"
+        )
+        self.r_GRF = trial.get_data(model.DataCategory.MARKERS).sel(
+            channel="RNormalisedGRF"
+        )
+        self.frate = 100  # TODO: read from c3d file
+
+    def _condition_1(self, grf_events: pd.DataFrame) -> pd.DataFrame:
+        """Tests if events are regularly spaced. If an event is too close to (or too far from) another events (1st condition)
+
+        Args:
+            grf_events: table of events detected with GRF
+
+        Returns:
+            pd.DataFrame: same event table with added column specifying which event meets the condition
+        """
+        events_l_hs = grf_events[
+            (grf_events[self._LABEL_COLUMN] == FOOT_STRIKE)
+            & (grf_events[self._CONTEXT_COLUMN] == LEFT)
+        ][self._TIME_COLUMN].to_numpy()
+        gait_freq = np.mean(events_l_hs[1:] - events_l_hs[:-1])
+        if (gait_freq > 2) or (gait_freq < 0.5):
+            gait_freq = 1
+        max_dist = 0.5 * gait_freq
+        min_dist = 0.01 * gait_freq
+        grf_events[self._COND_1] = [True] * len(grf_events)
+        distances = (
+            grf_events[self._TIME_COLUMN][1:].to_numpy()
+            - grf_events[self._TIME_COLUMN][:-1].to_numpy()
+        )
+        grf_events.loc[1 : len(grf_events), self._COND_1] = (distances > min_dist) & (
+            distances < max_dist
+        )
+        return grf_events
+
+    def _condition_2(
+        self, grf_events: pd.DataFrame, GRF_l: xr.DataArray, GRF_r: xr.DataArray
+    ) -> pd.DataFrame:
+        """Tests if GRF values at the time of the event is not too high (2nd condition)
+
+        Args:
+            grf_events: table of events detected with GRF
+            GRF_l: Left Ground Reaction Forces
+            GRF_r: Right Ground Reaction Forces
+        Returns:
+            pd.DataFrame: same event table with added column specifying which event meets the condition
+        """
+        grf_events[self._COND_2] = [False] * len(grf_events)
+        for context, GRF in zip(SIDES, [GRF_l, GRF_r]):
+            threshold = 0.125 * np.nanmax(GRF.loc["z"].data)  # arbitrary threshold
+            events = grf_events[(grf_events[self._CONTEXT_COLUMN] == context)][
+                self._TIME_COLUMN
+            ].to_numpy()
+            values = GRF.loc["z"][np.isin(GRF.time.data, events)].data
+            idx = np.squeeze(np.argwhere(values < threshold))
+            grf_events.loc[idx, self._COND_2] = [True] * len(idx)
+        return grf_events
+
+    def _condition_3(self, grf_events, GRF_l, GRF_r, frate):
+        """Tests if GRF values at the time of the event is preceded or followed by a large slope (3rd condition)
+
+        Args:
+            grf_events: table of events detected with GRF
+
+        Returns:
+            pd.DataFrame: same event table with added column specifying which event meets the condition
+        """
+        threshold = 250  # TODO: find more appropriate threshold
+        grf_events[self._COND_3] = [True] * len(grf_events)
+        window_size = 10
+        for context, GRF in zip(SIDES, [GRF_l, GRF_r]):
+            events_all = grf_events[(grf_events[self._CONTEXT_COLUMN] == context)]
+            events = events_all[self._TIME_COLUMN]
+            labels = events_all[self._LABEL_COLUMN]
+            grf_windows = np.zeros((events.shape[0], window_size))
+            for i, event in enumerate(events):
+                if labels.iloc[i] == FOOT_OFF:
+                    rge = np.linspace(
+                        event - (window_size - 1) / frate,
+                        event,
+                        window_size,
+                        endpoint=True,
+                    )
+                else:
+                    rge = np.linspace(
+                        event,
+                        event + (window_size - 1) / frate,
+                        window_size,
+                        endpoint=True,
+                    )
+                print(rge, event)
+                grf_windows[i] = GRF.loc["z"][
+                    np.isin(GRF.time.data.astype("float32"), rge.astype("float32"))
+                ].data
+            derivatives = np.nanmean(
+                (grf_windows[:, 1:] - grf_windows[:, :-1]) * frate, axis=0
+            )
+            idx = np.squeeze(np.argwhere(np.abs(derivatives) < threshold))
+            grf_events.loc[idx, self._COND_3] = [False] * len(idx)
+        return grf_events
+
+    def _condition_4(self, grf_events: pd.DataFrame) -> pd.DataFrame:
+        """Tests which events follow the correct order of events (4th condition)
+
+        Args:
+            grf_events: table of events detected with GRF
+
+        Returns:
+            pd.DataFrame: same event table with added column specifying which event meets the condition
+        """
+        grf_events[self._COND_4] = [True] * len(grf_events)
+        correct_sequence, incorrect_times = SequenceEventChecker().check_events(
+            grf_events
+        )
+        if not correct_sequence:
+            grf_events[self._COND_4] = ~grf_events[self._TIME_COLUMN].isin(
+                incorrect_times
+            )
+        return grf_events
+
+    def get_reference(self) -> model.Trial:
+        """Checks the conditions for a trial and assigns the resulting events to the trial
+
+        Returns:
+            model.Trial: : trial with reference events from GRF data as attribute
+        """
+        ref_events = self._check_conditions(self.grf_events)
+        trial = self._write_ref_events(self.trial, ref_events)
+        return trial
+
+    def _check_conditions(self, grf_events: pd.DataFrame) -> pd.DataFrame:
+        """Check all the conditions and selects 15 consecutive gait cycles where are all conditions are met
+
+        Args:
+            grf_events: table of events detected with GRF
+
+        Returns:
+            pd.DataFrame: subset of the event table of 15 gaitcycles where conditions are met
+        """
+        nb_gaitcycles = 15
+        correct_size = nb_gaitcycles * 4
+        out_events = grf_events.copy(deep=True)
+        out_events = self._condition_1(out_events)
+        out_events = self._condition_2(out_events, self.l_GRF, self.r_GRF)
+        out_events = self._condition_3(out_events, self.l_GRF, self.r_GRF, self.frate)
+        out_events = self._condition_4(out_events)
+        out_events[self._COND_TOTAL] = [True] * len(grf_events)
+        out_events[self._REF_EVENTS] = [False] * len(grf_events)
+        for cond in [self._COND_1, self._COND_2, self._COND_3, self._COND_4]:
+            if cond in out_events.columns:
+                out_events[self._COND_TOTAL] = out_events.apply(
+                    lambda x: x[self._COND_TOTAL] * x[cond], axis=1
+                )
+        for i in range(correct_size, len(grf_events)):
+            ref = (
+                out_events.loc[i - correct_size : (i - 1), self._COND_TOTAL].sum()
+                == correct_size
+            )
+            if ref:
+                out_events.loc[i - correct_size : (i - 1), self._REF_EVENTS] = [
+                    ref
+                ] * correct_size
+                break
+        return grf_events[out_events[self._REF_EVENTS]]
+
+    def _write_ref_events(self, trial: model.Trial, grf_events: pd.DataFrame):
+        """Assigns an event table to a model.Trial object"""
+        trial.events = grf_events
+        return trial
+
+
 class AutoEventDetection:
     """
     Class for the automatisation of marker-based event detection
@@ -1426,30 +1610,42 @@ class AutoEventDetection:
             EventDetector: instance of EventDetector class containing the optimized event detectors for each event type and side
         """
         # TODO: optimise cut trial
-        # TODO: make function shorter
         opt_detectors: dict[str, dict] = {FOOT_STRIKE: {}, FOOT_OFF: {}}
         event_detectors_ = []  # TODO: remove (here only for testing)
         for label in EVENT_TYPES:
-            # print(label)
             for context in SIDES:
-                # print(context)
                 opt = np.zeros(len(self.method_list))
                 event_detectors = []
                 for idx, method in enumerate(self.method_list):
                     event_detector = method(
-                        self._configs, context, label, trial_ref = self.trial_ref
+                        self._configs, context, label, trial_ref=self.trial_ref
                     )  ##an instance for each side
                     if label in event_detector._EVENT_TYPES:
                         times = event_detector._detect_events(self.trial_ref)
+                        times = times[
+                            (
+                                times
+                                < self.trial_ref.events[
+                                    event_detector._TIME_COLUMN
+                                ].max()
+                            )
+                            & (
+                                times
+                                > self.trial_ref.events[
+                                    event_detector._TIME_COLUMN
+                                ].min()
+                            )
+                        ]
                         errors, missed, excess = event_detector._get_accuracy(times)
                         event_detector._save_performance(errors, missed, excess)
-                        event_detectors.append(event_detector)
                         event_detectors_.append(
                             event_detector
                         )  # TODO: remove (here only for testing)
                         opt[idx] = self._optim_function(event_detector)
+                    event_detectors.append(event_detector)
                 index = np.argmax(opt)
                 opt_detectors[label][context] = event_detectors[index]
+                print(event_detectors[index]._CODE)
         event_detector = EventDetector(
             opt_detectors[FOOT_STRIKE][LEFT],
             opt_detectors[FOOT_STRIKE][RIGHT],
@@ -1478,7 +1674,7 @@ class AutoEventDetection:
             + 0.5 * (1 - detector._excess)
         )
 
-    ##TODO: TO REMOVE (only there for testing)
+    ##TODO: TO BE DELETED (only there for testing)
     def plot_accuracies(self):
         nb_methods = len(self.event_detectors)
         fig, ax = plt.subplots(3, 1, figsize=(12, 6), sharex=True)
