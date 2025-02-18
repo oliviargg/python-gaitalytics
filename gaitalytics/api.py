@@ -93,12 +93,13 @@ def load_c3d_trial(
 
 
 def get_event_detector(
-    method: str, configs: mapping.MappingConfigs, offset: float = 0, trial_ref=None
+    method_hs: str, method_to: str, configs: mapping.MappingConfigs, offset: float = 0, trial_ref=None
 ) -> events.EventDetector:
-    """Builds an EventDetector object whose method is the same for all event type
+    """Builds an EventDetector object whose method is the same for all event types
 
     Args:
-        method: event detection method
+        method_hs: event detection method for heel strike
+        method_to: event detection method for toe off
                 - "Zen" will test the Zeni method
                 - "Des" will test the Desailly method
                 - "AC1" to "AC6" will test the Autocorrelation 1 to 6 methods
@@ -109,8 +110,29 @@ def get_event_detector(
     Returns:
         EventDetector object
     """
-    return events.EventDetectorBuilder.get_event_detector(
-        configs, method, offset, trial_ref
+    if trial_ref is None:
+        return events.EventDetectorBuilder.get_event_detector_no_ref(
+            configs, method_hs, method_to, offset
+        )
+    else:
+        return events.EventDetectorBuilder.get_event_detector_with_ref(
+            configs, method_hs, method_to, offset
+        )
+    
+def get_GRF_event_detector(
+    configs: mapping.MappingConfigs, offset: float = 0
+    ) -> events.EventDetector:
+    """Builds an EventDetector object whose method is the same for all event types
+
+    Args:
+        config: The mapping configurations
+        offset: offset to be applied to all event timings, default is 0
+
+    Returns:
+        EventDetector object
+    """
+    return events.EventDetectorBuilder.get_event_detector_no_ref(
+        configs, "GRF", "GRF", offset
     )
 
 
@@ -195,7 +217,7 @@ def find_optimal_detectors(
 def get_ref_from_GRF(
     trial: model.Trial, config: mapping.MappingConfigs, gait_cycles_ref: int = 15
 ):
-    event_detector = get_event_detector("GRF", config, trial_ref=trial)
+    event_detector = get_GRF_event_detector(config)
     events_table = detect_events(trial, event_detector)
 
     obj = events.ReferenceFromGrf(events_table, trial, gait_cycles_ref)
