@@ -1,6 +1,7 @@
 """This module contains classes for checking and detecting events in a trial."""
 
 from abc import ABC, abstractmethod
+from enum import Enum
 
 import numpy as np
 import pandas as pd
@@ -27,6 +28,22 @@ CONTEXT_COLUMN = io._EventInputFileReader.COLUMN_CONTEXT
 ICON_COLUMN = io._EventInputFileReader.COLUMN_ICON
 key_init = "init"
 key_ev_type = "event_type"
+
+
+class MappedMethods(Enum):
+    """
+    Map each method to a string code¨
+    """
+
+    ZENI = "Zen"
+    DESAILLY = "Des"
+    AC1 = "AC1"
+    AC2 = "AC2"
+    AC3 = "AC3"
+    AC4 = "AC4"
+    AC5 = "AC5"
+    AC6 = "AC6"
+    GRF = "GRF"
 
 
 class _BaseEventChecker(ABC):
@@ -369,6 +386,8 @@ class GrfEventDetection(BaseEventDetection):
     Class for Ground Reaction Forces based event detection
     """
 
+    _CODE = MappedMethods.GRF.value
+
     def __init__(self, configs, context, label, offset=0):
         """Initializes a new instance of the AC class.
 
@@ -466,7 +485,7 @@ class BaseOptimisedEventDetection(BaseEventDetection, ABC):
         configs: mapping.MappingConfigs,
         context: str,
         label: str,
-        trial_ref: None | model.Trial = None, 
+        trial_ref: None | model.Trial = None,
         offset: float = 0,
     ):
         """Initializes a new instance of the BaseOptimisedEventDetection class for an event type on a single side.
@@ -746,7 +765,9 @@ class PeakEventDetection(BaseOptimisedEventDetection, ABC):
                             & (times > self.trial_ref.events[self._TIME_COLUMN].min())
                         ]
                     else:
-                        raise ValueError("Reference trial must be provided")
+                        raise ValueError(
+                            "Reference trial must be provided, or privide a value for the parameter 'distance'."
+                        )
                     acc, missed, excess = self._get_accuracy(times)
                     min_accuracy, min_missed, min_excess, best_params = return_best(
                         min_accuracy,
@@ -860,7 +881,8 @@ class Zeni(PeakEventDetection):
     """
     Class for marker-based event detector based on Zeni et al. (2008)
     """
-    _CODE = "Zen"
+
+    _CODE = MappedMethods.ZENI.value
 
     def _get_relevant_channels(self, trial: model.Trial) -> dict:
         """
@@ -904,7 +926,8 @@ class Desailly(PeakEventDetection):
     """
     Class for marker-based event detector based on Desailly et al. (2009)
     """
-    _CODE = "Des"
+
+    _CODE = MappedMethods.DESAILLY.value
 
     def _get_relevant_channels(self, trial: model.Trial) -> dict:
         """
@@ -1004,7 +1027,7 @@ class AC(PeakEventDetection):
         self.functions = functions
 
     @classmethod
-    def get_AC1(cls, configs, context, label, trial_ref, offset = 0):
+    def get_AC1(cls, configs, context, label, trial_ref, offset=0):
         """
         Initializes an instance of class AC using the vertical componenent of the heel marker and the horizontal distance between the sacrum and the heel to detect heel strikes
         """
@@ -1014,13 +1037,13 @@ class AC(PeakEventDetection):
             label,
             functions=[cls.Heel_z, cls.Sacr_Heel_x],
             trial_ref=trial_ref,
-            offset = offset
+            offset=offset,
         )
-        instance._CODE = "AC1"
+        instance._CODE = MappedMethods.AC1.value
         return instance
 
     @classmethod
-    def get_AC2(cls, configs, context, label, trial_ref, offset = 0):
+    def get_AC2(cls, configs, context, label, trial_ref, offset=0):
         """
         Initializes an instance of class AC using the vertical componenent of the heel marker, the horizontal distance between the sacrum and the heel, and the angle of the foot to detect heel strikes
         """
@@ -1030,13 +1053,13 @@ class AC(PeakEventDetection):
             label,
             functions=[cls.Heel_z, cls.Sacr_Heel_x, cls.Foot_alpha],
             trial_ref=trial_ref,
-            offset = offset
+            offset=offset,
         )
-        instance._CODE = "AC2"
+        instance._CODE = MappedMethods.AC2.value
         return instance
 
     @classmethod
-    def get_AC3(cls, configs, context, label, trial_ref, offset = 0):
+    def get_AC3(cls, configs, context, label, trial_ref, offset=0):
         """
         Initializes an instance of class AC using the hortizontal distance between the anterior hips and the horizontal distance between the sacrum and the heel to detect heel strikes
         """
@@ -1046,13 +1069,13 @@ class AC(PeakEventDetection):
             label,
             functions=[cls.Hip_x, cls.Sacr_Heel_x],
             trial_ref=trial_ref,
-            offset = offset
+            offset=offset,
         )
-        instance._CODE = "AC3"
+        instance._CODE = MappedMethods.AC3.value
         return instance
 
     @classmethod
-    def get_AC4(cls, configs, context, label, trial_ref, offset = 0):
+    def get_AC4(cls, configs, context, label, trial_ref, offset=0):
         """
         Initializes an instance of class AC using the vertical componenent of the heel marker, the horizontal distance between the sacrum and the heel, the angle of the foot and the horizontal distance between the anterior hips to detect heel strikes
         """
@@ -1062,13 +1085,13 @@ class AC(PeakEventDetection):
             label,
             functions=[cls.Heel_z, cls.Sacr_Heel_x, cls.Foot_alpha, cls.Hip_x],
             trial_ref=trial_ref,
-            offset = offset
+            offset=offset,
         )
-        instance._CODE = "AC4"
+        instance._CODE = MappedMethods.AC4.value
         return instance
 
     @classmethod
-    def get_AC5(cls, configs, context, label, trial_ref, offset = 0):
+    def get_AC5(cls, configs, context, label, trial_ref, offset=0):
         """
         Initializes an instance of class AC using the vertical componenent of the toe marker and the horizontal distance between the sacrum and the toe to detect toe offs
         """
@@ -1078,13 +1101,13 @@ class AC(PeakEventDetection):
             label,
             functions=[cls.Toe_z, cls.Sacr_Toe_x],
             trial_ref=trial_ref,
-            offset = offset
+            offset=offset,
         )
-        instance._CODE = "AC5"
+        instance._CODE = MappedMethods.AC5.value
         return instance
 
     @classmethod
-    def get_AC6(cls, configs, context, label, trial_ref, offset = 0):
+    def get_AC6(cls, configs, context, label, trial_ref, offset=0):
         """
         Initializes an instance of class AC using the vertical componenent of the toe marker, the horizontal distance between the sacrum and the toe, and the angle of the foot to detect toe offs
         """
@@ -1094,9 +1117,9 @@ class AC(PeakEventDetection):
             label,
             functions=[cls.Toe_z, cls.Sacr_Toe_x, cls.Foot_alpha],
             trial_ref=trial_ref,
-            offset = offset
+            offset=offset,
         )
-        instance._CODE = "AC6"
+        instance._CODE = MappedMethods.AC6.value
         return instance
 
     @staticmethod
@@ -1369,15 +1392,24 @@ class EventDetectorBuilder:
     """
 
     MAPPING: dict = {
-        "Zen": {key_init : Zeni, key_ev_type: [FOOT_STRIKE, FOOT_OFF]},
-        "Des": {key_init : Desailly, key_ev_type: [FOOT_STRIKE, FOOT_OFF]},
-        "AC1": {key_init : AC.get_AC1, key_ev_type: [FOOT_STRIKE]},
-        "AC2": {key_init : AC.get_AC2, key_ev_type: [FOOT_STRIKE]},
-        "AC3": {key_init : AC.get_AC3, key_ev_type: [FOOT_STRIKE]},
-        "AC4": {key_init : AC.get_AC4, key_ev_type: [FOOT_STRIKE]},
-        "AC5": {key_init : AC.get_AC5, key_ev_type: [FOOT_OFF]},
-        "AC6": {key_init : AC.get_AC6, key_ev_type: [FOOT_OFF]},
-        "GRF": {key_init : GrfEventDetection, key_ev_type: [FOOT_STRIKE, FOOT_OFF]}
+        MappedMethods.ZENI.value: {
+            key_init: Zeni,
+            key_ev_type: [FOOT_STRIKE, FOOT_OFF],
+        },
+        MappedMethods.DESAILLY.value: {
+            key_init: Desailly,
+            key_ev_type: [FOOT_STRIKE, FOOT_OFF],
+        },
+        MappedMethods.AC1.value: {key_init: AC.get_AC1, key_ev_type: [FOOT_STRIKE]},
+        MappedMethods.AC2.value: {key_init: AC.get_AC2, key_ev_type: [FOOT_STRIKE]},
+        MappedMethods.AC3.value: {key_init: AC.get_AC3, key_ev_type: [FOOT_STRIKE]},
+        MappedMethods.AC4.value: {key_init: AC.get_AC4, key_ev_type: [FOOT_STRIKE]},
+        MappedMethods.AC5.value: {key_init: AC.get_AC5, key_ev_type: [FOOT_OFF]},
+        MappedMethods.AC6.value: {key_init: AC.get_AC6, key_ev_type: [FOOT_OFF]},
+        MappedMethods.GRF.value: {
+            key_init: GrfEventDetection,
+            key_ev_type: [FOOT_STRIKE, FOOT_OFF],
+        },
     }
 
     @classmethod
@@ -1388,7 +1420,7 @@ class EventDetectorBuilder:
         if name not in cls.MAPPING.keys():
             raise ValueError(f"Unknown method: {name}")
         return cls.MAPPING[name][key_init]
-    
+
     @classmethod
     def get_event_types(cls, name: str):
         """
@@ -1397,14 +1429,14 @@ class EventDetectorBuilder:
         if name not in cls.MAPPING.keys():
             raise ValueError(f"Unknown method: {name}")
         return cls.MAPPING[name][key_ev_type]
-    
+
     @classmethod
     def check_event_type(cls, name: str, type: str):
         """Raises ValueError if a method is used for an event type detection it cannot compute for"""
         event_types = cls.get_event_types(name)
         if type not in event_types:
             raise ValueError(f"Method '{name}' cannot be used for {type} detection")
-    
+
     @classmethod
     def get_event_detector_with_ref(
         cls,
@@ -1429,19 +1461,27 @@ class EventDetectorBuilder:
         cls.check_event_type(name_to, FOOT_OFF)
         method_hs = cls.get_method(name_hs)
         method_to = cls.get_method(name_to)
-        #raise error if you try to use GRF method with a reference
-        if isinstance(method_hs, type) and not issubclass(method_hs, BaseOptimisedEventDetection) :
-            raise TypeError(f"Method '{name_hs}' cannot be used with a reference to detect events")
-        elif isinstance(method_to, type) and not issubclass(method_to, BaseOptimisedEventDetection):
-            raise TypeError(f"Method '{name_to}' cannot be used with a reference to detect events")
+        # raise error if you try to use GRF method with a reference
+        if isinstance(method_hs, type) and not issubclass(
+            method_hs, BaseOptimisedEventDetection
+        ):
+            raise TypeError(
+                f"Method '{name_hs}' cannot be used with a reference to detect events"
+            )
+        elif isinstance(method_to, type) and not issubclass(
+            method_to, BaseOptimisedEventDetection
+        ):
+            raise TypeError(
+                f"Method '{name_to}' cannot be used with a reference to detect events"
+            )
 
         return EventDetector(
-            method_hs(configs, LEFT, FOOT_STRIKE, trial_ref = trial_ref, offset = offset),
-            method_hs(configs, RIGHT, FOOT_STRIKE, trial_ref = trial_ref, offset = offset),
-            method_to(configs, LEFT, FOOT_OFF, trial_ref = trial_ref, offset = offset),
-            method_to(configs, RIGHT, FOOT_OFF, trial_ref = trial_ref, offset = offset),
+            method_hs(configs, LEFT, FOOT_STRIKE, trial_ref=trial_ref, offset=offset),
+            method_hs(configs, RIGHT, FOOT_STRIKE, trial_ref=trial_ref, offset=offset),
+            method_to(configs, LEFT, FOOT_OFF, trial_ref=trial_ref, offset=offset),
+            method_to(configs, RIGHT, FOOT_OFF, trial_ref=trial_ref, offset=offset),
         )
-    
+
     @classmethod
     def get_event_detector_no_ref(
         cls,
@@ -1465,15 +1505,16 @@ class EventDetectorBuilder:
         cls.check_event_type(name_to, FOOT_OFF)
         method_hs = cls.get_method(name_hs)
         method_to = cls.get_method(name_to)
-        #Raise error if you try to use AC method without reference
-        if (not isinstance(method_hs, type) and method_hs.__self__ is AC) or \
-            (not isinstance(method_to, type) and method_to.__self__ is AC):
+        # Raise error if you try to use AC method without reference
+        if (not isinstance(method_hs, type) and method_hs.__self__ is AC) or (
+            not isinstance(method_to, type) and method_to.__self__ is AC
+        ):
             raise TypeError("Method 'AC' works only with a reference trial")
         return EventDetector(
-            method_hs(configs, LEFT, FOOT_STRIKE, offset = offset),
-            method_hs(configs, RIGHT, FOOT_STRIKE, offset = offset),
-            method_to(configs, LEFT, FOOT_OFF, offset = offset),
-            method_to(configs, RIGHT, FOOT_OFF, offset = offset),
+            method_hs(configs, LEFT, FOOT_STRIKE, offset=offset),
+            method_hs(configs, RIGHT, FOOT_STRIKE, offset=offset),
+            method_to(configs, LEFT, FOOT_OFF, offset=offset),
+            method_to(configs, RIGHT, FOOT_OFF, offset=offset),
         )
 
     @classmethod
@@ -1505,10 +1546,12 @@ class EventDetectorBuilder:
         method_hs_l = cls.get_method(name_hs_l)
         method_hs_r = cls.get_method(name_hs_r)
         return EventDetector(
-            method_to_l(configs, LEFT, FOOT_OFF, offset = offset, trial_ref = trial_ref),
-            method_to_r(configs, RIGHT, FOOT_OFF, offset = offset, trial_ref = trial_ref),
-            method_hs_l(configs, LEFT, FOOT_STRIKE, offset = offset, trial_ref = trial_ref),
-            method_hs_r(configs, RIGHT, FOOT_STRIKE, offset = offset, trial_ref = trial_ref),
+            method_hs_l(configs, LEFT, FOOT_STRIKE, offset=offset, trial_ref=trial_ref),
+            method_hs_r(
+                configs, RIGHT, FOOT_STRIKE, offset=offset, trial_ref=trial_ref
+            ),
+            method_to_l(configs, LEFT, FOOT_OFF, offset=offset, trial_ref=trial_ref),
+            method_to_r(configs, RIGHT, FOOT_OFF, offset=offset, trial_ref=trial_ref),
         )
 
 
@@ -1764,7 +1807,9 @@ class AutoEventDetection:
                     event_detector = method(
                         self._configs, context, label, trial_ref=self.trial_ref
                     )  ##an instance for each side
-                    if label in EventDetectorBuilder.get_event_types(event_detector._CODE):
+                    if label in EventDetectorBuilder.get_event_types(
+                        event_detector._CODE
+                    ):
                         times = event_detector._detect_events(self.trial_ref)
                         times = times[
                             (
@@ -1789,7 +1834,6 @@ class AutoEventDetection:
                     event_detectors.append(event_detector)
                 index = np.argmax(opt)
                 opt_detectors[label][context] = event_detectors[index]
-                print(event_detectors[index]._CODE)
         event_detector = EventDetector(
             opt_detectors[FOOT_STRIKE][LEFT],
             opt_detectors[FOOT_STRIKE][RIGHT],
