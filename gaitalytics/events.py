@@ -1474,12 +1474,15 @@ class ReferenceFromGrf:
     _COND_TOTAL = "total"
     _REF_EVENTS = "ref"
 
-    def __init__(self, grf_events: pd.DataFrame, trial: model.Trial):
+    def __init__(
+        self, grf_events: pd.DataFrame, trial: model.Trial, gait_cycles_ref: int = 15
+    ):
         """Initialization of an instance of the ReferenceFromGrf class
 
         Args:
             grf_events: events detected with the GRF-based algorithm
             trial: trial whose detcted events with GRF-algorithm will be used as reference
+            gait_cycles_ref: number of gait cycles to include in reference
         """
         self.grf_events = grf_events
         self.trial = trial
@@ -1489,6 +1492,7 @@ class ReferenceFromGrf:
         self.r_GRF = trial.get_data(model.DataCategory.MARKERS).sel(
             channel="RNormalisedGRF"
         )
+        self.gait_cycles_ref = gait_cycles_ref
         self.frate = 100  # TODO: read from c3d file
 
     def _condition_1(self, grf_events: pd.DataFrame) -> pd.DataFrame:
@@ -1623,8 +1627,7 @@ class ReferenceFromGrf:
         Returns:
             pd.DataFrame: subset of the event table of 15 gaitcycles where conditions are met
         """
-        nb_gaitcycles = 15
-        correct_size = nb_gaitcycles * 4
+        correct_size = self.gait_cycles_ref * 4
         out_events = grf_events.copy(deep=True)
         out_events = self._condition_1(out_events)
         out_events = self._condition_2(out_events, self.l_GRF, self.r_GRF)

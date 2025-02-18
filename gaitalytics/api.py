@@ -188,15 +188,17 @@ def find_optimal_detectors(
     ]
     auto_obj = events.AutoEventDetection(config, trial_ref, method_list_mapping)
     event_detector = auto_obj.get_optimised_event_detectors()
-    auto_obj.plot_accuracies()  # TODO: delete
+    # auto_obj.plot_accuracies()  # TODO: delete
     return event_detector
 
 
-def get_ref_from_GRF(trial: model.Trial, config: mapping.MappingConfigs):
+def get_ref_from_GRF(
+    trial: model.Trial, config: mapping.MappingConfigs, gait_cycles_ref: int = 15
+):
     event_detector = get_event_detector("GRF", config, trial_ref=trial)
     events_table = detect_events(trial, event_detector)
 
-    obj = events.ReferenceFromGrf(events_table, trial)
+    obj = events.ReferenceFromGrf(events_table, trial, gait_cycles_ref)
     return obj.get_reference()
 
 
