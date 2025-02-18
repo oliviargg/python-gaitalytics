@@ -1352,6 +1352,18 @@ class EventDetector:
         ).reset_index(drop=True)
         return events
 
+    def set_parameters(self, parameters: dict | None):
+        """
+        Sets parameters to all its event detector methods
+        """
+        if parameters is not None:
+            self.hs_left.set_parameters(parameters)
+            self.hs_right.set_parameters(parameters)
+            self.to_left.set_parameters(parameters)
+            self.to_right.set_parameters(parameters)
+        else:
+            pass
+
 
 class EventDetectorBuilder:
     """
