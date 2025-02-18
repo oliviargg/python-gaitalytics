@@ -93,7 +93,11 @@ def load_c3d_trial(
 
 
 def get_event_detector(
-    method_hs: str, method_to: str, configs: mapping.MappingConfigs, offset: float = 0, trial_ref=None
+    method_hs: str,
+    method_to: str,
+    configs: mapping.MappingConfigs,
+    offset: float = 0,
+    trial_ref=None,
 ) -> events.EventDetector:
     """Builds an EventDetector object whose method is the same for all event types
 
@@ -116,12 +120,13 @@ def get_event_detector(
         )
     else:
         return events.EventDetectorBuilder.get_event_detector_with_ref(
-            configs, method_hs, method_to, offset
+            configs, method_hs, method_to, trial_ref, offset
         )
-    
+
+
 def get_GRF_event_detector(
     configs: mapping.MappingConfigs, offset: float = 0
-    ) -> events.EventDetector:
+) -> events.EventDetector:
     """Builds an EventDetector object whose method is the same for all event types
 
     Args:
