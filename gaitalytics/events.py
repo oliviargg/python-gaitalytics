@@ -258,7 +258,7 @@ class BaseEventDetection(ABC):
         """
         Adds a dictionary parameters as object's attribute
         """
-        self.set_parameters = parameters
+        self._parameters = parameters
 
     @abstractmethod
     def _detect_events(self, trial: model.Trial) -> np.ndarray:
@@ -1385,7 +1385,7 @@ class EventDetectorBuilder:
         configs: mapping.MappingConfigs,
         name: str,
         offset: float = 0,
-        trial_ref: model.Trial = None,
+        trial_ref: model.Trial | None = None,
     ) -> EventDetector:
         """Builds an EventDetector instance with the same method predicting all event types
 
@@ -1414,7 +1414,7 @@ class EventDetectorBuilder:
         name_hs_l: str,
         name_hs_r: str,
         offset: float = 0,
-        trial_ref=None,
+        trial_ref: model.Trial | None = None,
     ) -> EventDetector:
         """Builds an EventDetector instance with different methods predicting event types
 

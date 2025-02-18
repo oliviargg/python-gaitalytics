@@ -146,7 +146,9 @@ def get_mixed_event_detector(
 
 
 def detect_events(
-    trial: model.Trial, event_detector: events.EventDetector, parameters: dict = None
+    trial: model.Trial,
+    event_detector: events.EventDetector,
+    parameters: dict | None = None,
 ) -> pd.DataFrame:
     """Detects the events in the trial.
 
