@@ -249,7 +249,6 @@ class BaseEventDetection(ABC):
             self._CONTEXT_COLUMN: contexts,
             self._ICON_COLUMN: icons,
         }
-        # print(table)
         events = pd.DataFrame.from_dict(table)
         return events
 
@@ -672,7 +671,6 @@ class GrfTestEventDetection(BaseOptimisedEventDetection):
         zero_threshold = 5
         for group_ in non_nan_groups_:
             close_to_zero = np.abs(grf_signal[group_].data) < zero_threshold
-            # print(grf_signal[group_].data)
             for i, j in enumerate(self._get_range(group_)):
                 if close_to_zero[j] and close_to_zero[self._get_range(group_)[i + 1]]:
                     grf_signal[group_[j]] = np.nan
@@ -683,7 +681,6 @@ class GrfTestEventDetection(BaseOptimisedEventDetection):
         return grf_signal
 
     def _detect_events(self, trial):
-        print(f"\n\t {self._label} {self._context}\n")
         GRF_3d = mocap.get_marker_data(
             trial,
             self._configs,
