@@ -1,7 +1,6 @@
 """This module contains classes for checking and detecting events in a trial."""
 
 from abc import ABC, abstractmethod
-from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -202,6 +201,7 @@ class BaseEventDetection(ABC):
             configs: The mapping configurations.
             context: The context of the detected events.
             label: The label of the detected events.
+            offset: offset by which all the events are shifted
 
         """
         self._configs = configs
@@ -247,8 +247,13 @@ class BaseEventDetection(ABC):
         return self._add_offset(events, self._offset)
 
     def _add_offset(self, events: np.ndarray, offset: float) -> np.ndarray:
+        """Add an offset to all predicted events
+
+        Args:
+            offset: offset by which all the events are shifted
+        """
         return events - offset
-    
+
     def set_parameters(self, parameters: dict):
         """
         Adds a dictionary parameters as object's attribute
@@ -358,27 +363,41 @@ class BaseEventDetection(ABC):
 
 
 class GrfEventDetection(BaseEventDetection):
+    """
+    Class for Ground Reaction Forces based event detection
+    """
+
     def __init__(self, configs, context, label, offset=0):
+        """Initializes a new instance of the AC class.
+
+        Args:
+            configs: The mapping configurations.
+            context: The context of the detected events.
+            label: The label of the detected events.
+            offset: offset by which all the events are shifted
+        """
         super().__init__(configs, context, label, offset)
         self.frate = 100  # TODO Hz --> take it from c3d file.
 
-    def _get_range(self, group):
-        if self._label == FOOT_STRIKE:
-            return range(len(group) - 1)
-        else:
-            return range(len(group) - 1, 0, -1)
-
     def processing_masked_signal(self, grf_signal):
+        """
+        Processes GRF signal according to these 2 processes:
+            1. remove GRF activations that are too short
+            2. if GRF signal lingers near 0 for too long, it is cut short
+        Note: Assumes that GRF is set to Nan if not activated
+        """
         nan_mask = np.isnan(grf_signal.data).astype(int)
         non_nan_groups = np.split(
             np.arange(len(grf_signal)), np.where(nan_mask[:-1] & ~nan_mask[1:])[0] + 1
         )
 
+        # Process 1
         min_duration = 60
         for group in non_nan_groups:
             if len(group) < min_duration:
                 grf_signal[group] = np.nan
 
+        # Process 2
         nan_mask_ = np.isnan(grf_signal.data).astype(int)
         non_nan_groups_ = np.split(
             np.arange(len(grf_signal)), np.where(nan_mask_[:-1] & ~nan_mask_[1:])[0] + 1
@@ -398,6 +417,14 @@ class GrfEventDetection(BaseEventDetection):
         return grf_signal
 
     def _detect_events(self, trial):
+        """Detects the events in the trial according to GRF
+
+        Args:
+            trial: The trial for which to detect the events.
+
+        Returns:
+            np.ndarray: An array containing the detected events.
+        """
         GRF_3d = mocap.get_marker_data(
             trial,
             self._configs,
@@ -416,6 +443,15 @@ class GrfEventDetection(BaseEventDetection):
         events = time_[index]
         return events
 
+    def _get_range(self, group):
+        """
+        Utility function tahta gets a range according to the event type
+        """
+        if self._label == FOOT_STRIKE:
+            return range(len(group) - 1)
+        else:
+            return range(len(group) - 1, 0, -1)
+
 
 class BaseOptimisedEventDetection(BaseEventDetection, ABC):
     """Abstract class for event detectors used with a reference for optimisation.
@@ -430,7 +466,7 @@ class BaseOptimisedEventDetection(BaseEventDetection, ABC):
         context: str,
         label: str,
         offset: float = 0,
-        trial_ref: Union[None, model.Trial] = None,
+        trial_ref: None | model.Trial = None,
     ):
         """Initializes a new instance of the BaseOptimisedEventDetection class for an event type on a single side.
 
@@ -438,6 +474,7 @@ class BaseOptimisedEventDetection(BaseEventDetection, ABC):
             configs: The mapping configurations.
             context: The context of the detected events.
             label: The label of the detected events.
+            offset: offset by which all the events are shifted
             trial_ref: Trial to be used as reference, if any is required. Otherwise None
         """
         super().__init__(configs, context, label, offset)
@@ -963,6 +1000,7 @@ class AC(PeakEventDetection):
             label: The label of the detected events.
             functions: list of functions that compute the target values
             trial_ref: Trial to be used as reference
+            offset: offset by which all the events are shifted
         """
         super().__init__(configs, context, label, offset, trial_ref)
         self.functions = functions
@@ -1343,14 +1381,28 @@ class EventDetectorBuilder:
 
     @classmethod
     def get_event_detector(
-        cls, configs: mapping.MappingConfigs, name: str, offset: float = 0, trial=None
+        cls,
+        configs: mapping.MappingConfigs,
+        name: str,
+        offset: float = 0,
+        trial_ref: model.Trial = None,
     ) -> EventDetector:
+        """Builds an EventDetector instance with the same method predicting all event types
+
+        Args:
+            configs: The mapping configurations
+            name: Code of the method
+            offset: offset by which all the events are shifted
+            trial_ref: trial to be used as reference, if necessary. Otherwise None
+
+        Returns:
+            EventDetector instance initialized"""
         method = cls.get_method(name)
         return EventDetector(
-            method(configs, LEFT, FOOT_STRIKE, offset, trial),
-            method(configs, RIGHT, FOOT_STRIKE, offset, trial),
-            method(configs, LEFT, FOOT_OFF, offset, trial),
-            method(configs, RIGHT, FOOT_OFF, offset, trial),
+            method(configs, LEFT, FOOT_STRIKE, offset, trial_ref),
+            method(configs, RIGHT, FOOT_STRIKE, offset, trial_ref),
+            method(configs, LEFT, FOOT_OFF, offset, trial_ref),
+            method(configs, RIGHT, FOOT_OFF, offset, trial_ref),
         )
 
     @classmethod
@@ -1362,17 +1414,30 @@ class EventDetectorBuilder:
         name_hs_l: str,
         name_hs_r: str,
         offset: float = 0,
-        trial=None,
+        trial_ref=None,
     ) -> EventDetector:
+        """Builds an EventDetector instance with different methods predicting event types
+
+        Args:
+            configs: The mapping configurations
+            name_to_l: code of the method to predict left Toe Off
+            name_to_r: code of the method to predict right Toe Off
+            name_hs_l: code of the method to predict left Heel Strike
+            name_hs_r: code of the method to predict right Heel Strike
+            offset: offset by which all the events are shifted
+            trial_ref: trial to be used as reference, if necessary. Otherwise None
+
+        Returns:
+            EventDetector instance initialized"""
         method_to_l = cls.get_method(name_to_l)
         method_to_r = cls.get_method(name_to_r)
         method_hs_l = cls.get_method(name_hs_l)
         method_hs_r = cls.get_method(name_hs_r)
         return EventDetector(
-            method_to_l(configs, LEFT, FOOT_OFF, offset, trial),
-            method_to_r(configs, RIGHT, FOOT_OFF, offset, trial),
-            method_hs_l(configs, LEFT, FOOT_STRIKE, offset, trial),
-            method_hs_r(configs, RIGHT, FOOT_STRIKE, offset, trial),
+            method_to_l(configs, LEFT, FOOT_OFF, offset, trial_ref),
+            method_to_r(configs, RIGHT, FOOT_OFF, offset, trial_ref),
+            method_hs_l(configs, LEFT, FOOT_STRIKE, offset, trial_ref),
+            method_hs_r(configs, RIGHT, FOOT_STRIKE, offset, trial_ref),
         )
 
 
