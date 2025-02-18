@@ -248,6 +248,12 @@ class BaseEventDetection(ABC):
 
     def _add_offset(self, events: np.ndarray, offset: float) -> np.ndarray:
         return events - offset
+    
+    def set_parameters(self, parameters: dict):
+        """
+        Adds a dictionary parameters as object's attribute
+        """
+        self.set_parameters = parameters
 
     @abstractmethod
     def _detect_events(self, trial: model.Trial) -> np.ndarray:

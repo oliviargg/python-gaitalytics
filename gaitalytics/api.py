@@ -146,18 +146,20 @@ def get_mixed_event_detector(
 
 
 def detect_events(
-    trial: model.Trial, event_detector: events.EventDetector
+    trial: model.Trial, event_detector: events.EventDetector, parameters: dict = None
 ) -> pd.DataFrame:
     """Detects the events in the trial.
 
     Args:
         trial: The trial to detect the events for.
         event_detector: object containing detection methods (optimized or not) for each event type
+        parameters: dictionary of event detection parameters. Default None
 
     Returns:
         A DataFrame containing the detected events.
     """
 
+    event_detector.set_parameters(parameters)
     event_table = event_detector.detect_events(trial)
     return event_table
 
