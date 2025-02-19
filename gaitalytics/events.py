@@ -539,7 +539,7 @@ class BaseOptimisedEventDetection(BaseEventDetection, ABC):
         else:
             return 0.7  # TODO: very arbitrary value
 
-    def _get_accuracy(self, times: np.ndarray):
+    def _get_accuracy(self, times: np.ndarray, true_events: np.ndarray|None = None):
         """Computes the accuracy of detected events with the true reference events
 
         Args:
@@ -550,7 +550,7 @@ class BaseOptimisedEventDetection(BaseEventDetection, ABC):
             float [0; 1]: fraction of events that have not been detected (missed events)
             float [0; 1]: fraction of events detected that do not take place in reality (excess events)
         """
-        events_ref = self.ref_events
+        events_ref = self.ref_events if true_events is None else true_events
         rad_ = 0.5 * self.min_dist
         rad = 0.2
         in_ = np.array([])
