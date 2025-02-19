@@ -252,15 +252,19 @@ class BaseEventDetection(ABC):
         events = pd.DataFrame.from_dict(table)
         return events
 
-    def detect_events(self, trial: model.Trial) -> np.ndarray:
+    def detect_events(
+        self, trial: model.Trial, parameters: dict | None = None
+    ) -> np.ndarray:
         """Detects the events in the trial and adds an offset if there is any
 
         Args:
             trial: The trial for which to detect the events.
+            parameters: dictionary of event detection parameters. Default None
 
         Returns:
             np.ndarray: An array containing the timings of the specific event in seconds
         """
+        self.set_parameters(parameters) if parameters is not None else None
         events = self._detect_events(trial)
         return self._add_offset(events, self._offset)
 
@@ -1321,21 +1325,21 @@ class EventDetector:
         self.to_right = to_right
 
     def detect_events(
-        self,
-        trial: model.Trial,
+        self, trial: model.Trial, parameters: dict | None = None
     ) -> pd.DataFrame:
         """Detects events for all event types and sides
 
         Args:
             trial: The trial for which to detect the events.
+            parameters: dictionary of event detection parameters. Default None
 
         Returns:
             pd.DataFrame: Table containing all the detected events
         """
-        hs_l_events = self.hs_left.detect_events(trial)
-        hs_r_events = self.hs_right.detect_events(trial)
-        to_l_events = self.to_left.detect_events(trial)
-        to_r_events = self.to_right.detect_events(trial)
+        hs_l_events = self.hs_left.detect_events(trial, parameters)
+        hs_r_events = self.hs_right.detect_events(trial, parameters)
+        to_l_events = self.to_left.detect_events(trial, parameters)
+        to_r_events = self.to_right.detect_events(trial, parameters)
 
         events = self._create_data_frame(
             hs_l_events, hs_r_events, to_l_events, to_r_events
@@ -1369,18 +1373,6 @@ class EventDetector:
             by=self.hs_left._TIME_COLUMN, ascending=True
         ).reset_index(drop=True)
         return events
-
-    def set_parameters(self, parameters: dict | None):
-        """
-        Sets parameters to all its event detector methods
-        """
-        if parameters is not None:
-            self.hs_left.set_parameters(parameters)
-            self.hs_right.set_parameters(parameters)
-            self.to_left.set_parameters(parameters)
-            self.to_right.set_parameters(parameters)
-        else:
-            pass
 
 
 class EventDetectorBuilder:

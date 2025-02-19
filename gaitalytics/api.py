@@ -187,9 +187,7 @@ def detect_events(
     Returns:
         A DataFrame containing the detected events.
     """
-
-    event_detector.set_parameters(parameters)
-    event_table = event_detector.detect_events(trial)
+    event_table = event_detector.detect_events(trial, parameters)
     return event_table
 
 
