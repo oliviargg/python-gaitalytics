@@ -952,7 +952,7 @@ class Desailly(PeakEventDetection):
             np.ndarray: output of the High Pass Algorithm
         """
         if self.ref_events is None and not hasattr(self, "gait_freq"):
-            raise ValueError("Reference trial should be provided")
+            self.gait_freq = 1 #approximation of gait frequency
         elif self.ref_events is not None and not hasattr(self, "gait_freq"):
             self.gait_freq = 1 / np.mean(self.ref_events[1:] - self.ref_events[:-1])
         if "point" in points.keys():
