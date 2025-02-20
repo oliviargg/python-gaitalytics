@@ -523,6 +523,7 @@ class BaseOptimisedEventDetection(BaseEventDetection, ABC):
         )
         self.min_dist = self.get_min_dist()
         self.frate = 100  # TODO Hz --> take it from c3d file. How?
+        # trial.get_data(model.DataCategory.MARKERS).attrs["rate"]
 
     def get_event_times(self, events_df: pd.DataFrame) -> np.ndarray:
         """Gets the relevant events for this instance form the complete events table of the trial
