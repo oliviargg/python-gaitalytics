@@ -46,6 +46,16 @@ class MappedMethods(str, Enum):
     GRF = "GRF"
 
 
+AC_METHODS = [
+    MappedMethods.AC1,
+    MappedMethods.AC2,
+    MappedMethods.AC3,
+    MappedMethods.AC4,
+    MappedMethods.AC5,
+    MappedMethods.AC6,
+]
+
+
 class _BaseEventChecker(ABC):
     """Abstract class for event checkers.
 
@@ -1451,15 +1461,11 @@ class EventDetectorBuilder:
         method_hs = cls.get_method(name_hs)
         method_to = cls.get_method(name_to)
         # raise error if you try to use GRF method with a reference
-        if isinstance(method_hs, type) and not issubclass(
-            method_hs, BaseOptimisedEventDetection
-        ):
+        if name_hs == MappedMethods.GRF:
             raise TypeError(
                 f"Method '{name_hs}' cannot be used with a reference to detect events"
             )
-        elif isinstance(method_to, type) and not issubclass(
-            method_to, BaseOptimisedEventDetection
-        ):
+        elif name_to == MappedMethods.GRF:
             raise TypeError(
                 f"Method '{name_to}' cannot be used with a reference to detect events"
             )
@@ -1495,9 +1501,7 @@ class EventDetectorBuilder:
         method_hs = cls.get_method(name_hs)
         method_to = cls.get_method(name_to)
         # Raise error if you try to use AC method without reference
-        if (not isinstance(method_hs, type) and method_hs.__self__ is AC) or (
-            not isinstance(method_to, type) and method_to.__self__ is AC
-        ):
+        if name_hs in AC_METHODS or name_to in AC_METHODS:
             raise TypeError("Method 'AC' works only with a reference trial")
         return EventDetector(
             method_hs(configs, LEFT, FOOT_STRIKE, offset=offset),
@@ -1510,10 +1514,10 @@ class EventDetectorBuilder:
     def get_mixed_event_detector(
         cls,
         configs: mapping.MappingConfigs,
-        name_to_l: str,
-        name_to_r: str,
         name_hs_l: str,
         name_hs_r: str,
+        name_to_l: str,
+        name_to_r: str,
         offset: float = 0,
         trial_ref: model.Trial | None = None,
     ) -> EventDetector:
@@ -1530,17 +1534,39 @@ class EventDetectorBuilder:
 
         Returns:
             EventDetector instance initialized"""
+        # Check if given methods are valid for assigned event types (eg. AC1 cannot compute for Foot Off)
+        cls.check_event_type(name_hs_l, FOOT_STRIKE)
+        cls.check_event_type(name_hs_r, FOOT_STRIKE)
+        cls.check_event_type(name_to_l, FOOT_OFF)
+        cls.check_event_type(name_to_r, FOOT_OFF)
+        # Raise error if you try to use AC method without reference
+        if (
+            name_hs_l in AC_METHODS
+            or name_hs_r in AC_METHODS
+            or name_to_l in AC_METHODS
+            or name_to_r in AC_METHODS
+        ) and trial_ref is None:
+            raise ValueError(
+                "Method 'AC' works only with a reference trial. Please provide a reference trial"
+            )
+
         method_to_l = cls.get_method(name_to_l)
         method_to_r = cls.get_method(name_to_r)
         method_hs_l = cls.get_method(name_hs_l)
         method_hs_r = cls.get_method(name_hs_r)
         return EventDetector(
-            method_hs_l(configs, LEFT, FOOT_STRIKE, offset=offset, trial_ref=trial_ref),
-            method_hs_r(
-                configs, RIGHT, FOOT_STRIKE, offset=offset, trial_ref=trial_ref
-            ),
-            method_to_l(configs, LEFT, FOOT_OFF, offset=offset, trial_ref=trial_ref),
-            method_to_r(configs, RIGHT, FOOT_OFF, offset=offset, trial_ref=trial_ref),
+            method_hs_l(configs, LEFT, FOOT_STRIKE, offset=offset, trial_ref=trial_ref)
+            if name_hs_l != MappedMethods.GRF
+            else method_hs_l(configs, LEFT, FOOT_STRIKE, offset=offset),
+            method_hs_r(configs, RIGHT, FOOT_STRIKE, offset=offset, trial_ref=trial_ref)
+            if name_hs_r != MappedMethods.GRF
+            else method_hs_r(configs, RIGHT, FOOT_STRIKE, offset=offset),
+            method_to_l(configs, LEFT, FOOT_OFF, offset=offset, trial_ref=trial_ref)
+            if name_to_l != MappedMethods.GRF
+            else method_to_l(configs, LEFT, FOOT_OFF, offset=offset),
+            method_to_r(configs, RIGHT, FOOT_OFF, offset=offset, trial_ref=trial_ref)
+            if name_to_r != MappedMethods.GRF
+            else method_hs_l(configs, RIGHT, FOOT_OFF, offset=offset),
         )
 
 
