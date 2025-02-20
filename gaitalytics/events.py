@@ -1592,7 +1592,7 @@ class ReferenceFromGrf:
     _REF_EVENTS = "ref"
 
     def __init__(
-        self, grf_events: pd.DataFrame, trial: model.Trial, gait_cycles_ref: int = 15
+        self, grf_events: pd.DataFrame, trial: model.Trial, config: mapping.MappingConfigs, gait_cycles_ref: int = 15
     ):
         """Initialization of an instance of the ReferenceFromGrf class
 
@@ -1603,12 +1603,8 @@ class ReferenceFromGrf:
         """
         self.grf_events = grf_events
         self.trial = trial
-        self.l_GRF = trial.get_data(model.DataCategory.MARKERS).sel(
-            channel="LNormalisedGRF"
-        )
-        self.r_GRF = trial.get_data(model.DataCategory.MARKERS).sel(
-            channel="RNormalisedGRF"
-        )
+        self.l_GRF = mocap.get_marker_data(trial, config, mapping.MappedMarkers.L_GRF)
+        self.r_GRF = mocap.get_marker_data(trial, config, mapping.MappedMarkers.R_GRF)
         self.gait_cycles_ref = gait_cycles_ref
         self.frate = 100  # TODO: read from c3d file
 
@@ -1751,11 +1747,13 @@ class ReferenceFromGrf:
         out_events = self._condition_4(out_events)
         out_events[self._COND_TOTAL] = [True] * len(grf_events)
         out_events[self._REF_EVENTS] = [False] * len(grf_events)
+        #For each event, see if every condition is met
         for cond in [self._COND_1, self._COND_2, self._COND_3, self._COND_4]:
             if cond in out_events.columns:
                 out_events[self._COND_TOTAL] = out_events.apply(
                     lambda x: x[self._COND_TOTAL] * x[cond], axis=1
                 )
+        #select the events that will be taken as reference (number of gait_cycles defined by self.gait_cycles_ref)
         for i in range(correct_size, len(grf_events)):
             ref = (
                 out_events.loc[i - correct_size : (i - 1), self._COND_TOTAL].sum()

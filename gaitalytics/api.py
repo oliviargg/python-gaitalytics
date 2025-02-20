@@ -142,10 +142,10 @@ def get_GRF_event_detector(
 
 
 def get_mixed_event_detector(
-    method_to_l: str,
-    method_to_r: str,
     method_hs_l: str,
     method_hs_r: str,
+    method_to_l: str,
+    method_to_r: str,
     configs: mapping.MappingConfigs,
     offset: float = 0,
     trial=None,
@@ -168,7 +168,7 @@ def get_mixed_event_detector(
         EventDetector object
     """
     return events.EventDetectorBuilder.get_mixed_event_detector(
-        configs, method_to_l, method_to_r, method_hs_l, method_hs_r, offset, trial
+        configs, method_hs_l, method_hs_r, method_to_l, method_to_r, offset, trial
     )
 
 
@@ -223,7 +223,7 @@ def get_ref_from_GRF(
     event_detector = get_GRF_event_detector(config)
     events_table = detect_events(trial, event_detector)
 
-    obj = events.ReferenceFromGrf(events_table, trial, gait_cycles_ref)
+    obj = events.ReferenceFromGrf(events_table, trial, config, gait_cycles_ref)
     return obj.get_reference()
 
 
