@@ -30,7 +30,7 @@ key_init = "init"
 key_ev_type = "event_type"
 
 
-class MappedMethods(Enum):
+class MappedMethods(str, Enum):
     """
     Map each method to a string code¨
     """
@@ -389,7 +389,7 @@ class GrfEventDetection(BaseEventDetection):
     Class for Ground Reaction Forces based event detection
     """
 
-    _CODE = MappedMethods.GRF.value
+    _CODE = MappedMethods.GRF
 
     def __init__(self, configs, context, label, offset=0):
         """Initializes a new instance of the AC class.
@@ -539,7 +539,7 @@ class BaseOptimisedEventDetection(BaseEventDetection, ABC):
         else:
             return 0.7  # TODO: very arbitrary value
 
-    def _get_accuracy(self, times: np.ndarray, true_events: np.ndarray|None = None):
+    def _get_accuracy(self, times: np.ndarray, true_events: np.ndarray | None = None):
         """Computes the accuracy of detected events with the true reference events
 
         Args:
@@ -883,7 +883,7 @@ class Zeni(PeakEventDetection):
     Class for marker-based event detector based on Zeni et al. (2008)
     """
 
-    _CODE = MappedMethods.ZENI.value
+    _CODE = MappedMethods.ZENI
 
     def _get_relevant_channels(self, trial: model.Trial) -> dict:
         """
@@ -928,7 +928,7 @@ class Desailly(PeakEventDetection):
     Class for marker-based event detector based on Desailly et al. (2009)
     """
 
-    _CODE = MappedMethods.DESAILLY.value
+    _CODE = MappedMethods.DESAILLY
 
     def _get_relevant_channels(self, trial: model.Trial) -> dict:
         """
@@ -952,7 +952,7 @@ class Desailly(PeakEventDetection):
             np.ndarray: output of the High Pass Algorithm
         """
         if self.ref_events is None and not hasattr(self, "gait_freq"):
-            self.gait_freq = 1 #approximation of gait frequency
+            self.gait_freq = 1  # approximation of gait frequency
         elif self.ref_events is not None and not hasattr(self, "gait_freq"):
             self.gait_freq = 1 / np.mean(self.ref_events[1:] - self.ref_events[:-1])
         if "point" in points.keys():
@@ -1040,7 +1040,7 @@ class AC(PeakEventDetection):
             trial_ref=trial_ref,
             offset=offset,
         )
-        instance._CODE = MappedMethods.AC1.value
+        instance._CODE = MappedMethods.AC1
         return instance
 
     @classmethod
@@ -1056,7 +1056,7 @@ class AC(PeakEventDetection):
             trial_ref=trial_ref,
             offset=offset,
         )
-        instance._CODE = MappedMethods.AC2.value
+        instance._CODE = MappedMethods.AC2
         return instance
 
     @classmethod
@@ -1072,7 +1072,7 @@ class AC(PeakEventDetection):
             trial_ref=trial_ref,
             offset=offset,
         )
-        instance._CODE = MappedMethods.AC3.value
+        instance._CODE = MappedMethods.AC3
         return instance
 
     @classmethod
@@ -1088,7 +1088,7 @@ class AC(PeakEventDetection):
             trial_ref=trial_ref,
             offset=offset,
         )
-        instance._CODE = MappedMethods.AC4.value
+        instance._CODE = MappedMethods.AC4
         return instance
 
     @classmethod
@@ -1104,7 +1104,7 @@ class AC(PeakEventDetection):
             trial_ref=trial_ref,
             offset=offset,
         )
-        instance._CODE = MappedMethods.AC5.value
+        instance._CODE = MappedMethods.AC5
         return instance
 
     @classmethod
@@ -1120,7 +1120,7 @@ class AC(PeakEventDetection):
             trial_ref=trial_ref,
             offset=offset,
         )
-        instance._CODE = MappedMethods.AC6.value
+        instance._CODE = MappedMethods.AC6
         return instance
 
     @staticmethod
@@ -1381,21 +1381,21 @@ class EventDetectorBuilder:
     """
 
     MAPPING: dict = {
-        MappedMethods.ZENI.value: {
+        MappedMethods.ZENI: {
             key_init: Zeni,
             key_ev_type: [FOOT_STRIKE, FOOT_OFF],
         },
-        MappedMethods.DESAILLY.value: {
+        MappedMethods.DESAILLY: {
             key_init: Desailly,
             key_ev_type: [FOOT_STRIKE, FOOT_OFF],
         },
-        MappedMethods.AC1.value: {key_init: AC.get_AC1, key_ev_type: [FOOT_STRIKE]},
-        MappedMethods.AC2.value: {key_init: AC.get_AC2, key_ev_type: [FOOT_STRIKE]},
-        MappedMethods.AC3.value: {key_init: AC.get_AC3, key_ev_type: [FOOT_STRIKE]},
-        MappedMethods.AC4.value: {key_init: AC.get_AC4, key_ev_type: [FOOT_STRIKE]},
-        MappedMethods.AC5.value: {key_init: AC.get_AC5, key_ev_type: [FOOT_OFF]},
-        MappedMethods.AC6.value: {key_init: AC.get_AC6, key_ev_type: [FOOT_OFF]},
-        MappedMethods.GRF.value: {
+        MappedMethods.AC1: {key_init: AC.get_AC1, key_ev_type: [FOOT_STRIKE]},
+        MappedMethods.AC2: {key_init: AC.get_AC2, key_ev_type: [FOOT_STRIKE]},
+        MappedMethods.AC3: {key_init: AC.get_AC3, key_ev_type: [FOOT_STRIKE]},
+        MappedMethods.AC4: {key_init: AC.get_AC4, key_ev_type: [FOOT_STRIKE]},
+        MappedMethods.AC5: {key_init: AC.get_AC5, key_ev_type: [FOOT_OFF]},
+        MappedMethods.AC6: {key_init: AC.get_AC6, key_ev_type: [FOOT_OFF]},
+        MappedMethods.GRF: {
             key_init: GrfEventDetection,
             key_ev_type: [FOOT_STRIKE, FOOT_OFF],
         },
