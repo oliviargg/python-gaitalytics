@@ -88,10 +88,10 @@ def test_get_event_detector_ref():
 def test_get_mixed_event_detector_no_ref():
     config = api.load_config("./tests/pig_config.yaml")
     event_detector = api.get_mixed_event_detector(
-                                method_to_l = "Des",
-                                method_to_r = "Zen",
                                 method_hs_l = "Des",
                                 method_hs_r = "Zen",
+                                method_to_l = "Des",
+                                method_to_r = "Zen",
                                 configs = config
                                 )
     assert event_detector.hs_left._CODE == "Des"
@@ -103,10 +103,10 @@ def test_get_mixed_event_detector_ref():
     config = api.load_config("./tests/pig_config.yaml")
     trial = api.load_c3d_trial("./tests/treadmill_events.c3d", config)
     event_detector = api.get_mixed_event_detector(
-                                method_to_l = "AC6",
-                                method_to_r = "Zen",
                                 method_hs_l = "Des",
                                 method_hs_r = "AC1",
+                                method_to_l = "AC6",
+                                method_to_r = "Zen",
                                 configs = config,
                                 trial= trial
                                 )
