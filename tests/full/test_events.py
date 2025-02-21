@@ -77,7 +77,7 @@ class TestZeni:
         for type in EVENT_TYPES:
             for side in SIDES:
                 detector = Zeni(config, side, type)
-                pred_times = detector.detect_events(trial_small, parameters={})
+                pred_times = detector.detect_events(trial_small)
                 pred_events = pd.concat([pred_events, detector._create_data_frame(pred_times)])
         pred_events = pred_events.sort_values(by="time", ascending=True).reset_index(drop=True)
         events = events.drop(0).reset_index(drop=True)
@@ -109,7 +109,7 @@ class TestZeni:
         for type in EVENT_TYPES:
             for side in SIDES:
                 detector = Zeni(config, side, type)
-                pred_times = detector.detect_events(trial_big, parameters={})
+                pred_times = detector.detect_events(trial_big)
                 pred_events = pd.concat([pred_events, detector._create_data_frame(pred_times)])
         pred_events = pred_events.sort_values(by="time", ascending=True).reset_index(drop=True)
         rec_value = len(pred_events)
@@ -134,6 +134,69 @@ class TestZeni:
             exp_value = events.iloc[i].loc['icon_id']
             assert rec_value == exp_value
 
+class TestDesailly:
+    def test_small(self, trial_small, config):
+        events_ = trial_small.events
+        all_pred_events = pd.DataFrame()
+        for type in EVENT_TYPES:
+            for side in SIDES:
+                detector = Desailly(config, side, type)
+                pred_times = detector.detect_events(trial_small)
+                pred_events = detector._create_data_frame(pred_times)
+                all_pred_events = pd.concat([all_pred_events, pred_events])
+                events_side = events_[(events_["context"] == side)&(events_["label"]==type)].time
+                errors, missed, excess = detector._get_accuracy(pred_times, events_side)
+                rec_value = np.abs(np.mean(errors))
+                exp_value = 0.2
+                assert rec_value < exp_value
+                rec_value = missed 
+                exp_value = 0.76
+                assert rec_value < exp_value
+                rec_value = excess
+                exp_value = 0.7
+                assert rec_value < exp_value
+                rec_value = (pred_events["context"] == side).sum()
+                exp_value = len(pred_events)
+                assert rec_value == exp_value
+                rec_value = (pred_events["label"] == type).sum()
+                exp_value = len(pred_events)
+                assert rec_value == exp_value
+        all_pred_events = all_pred_events.sort_values(by="time", ascending=True).reset_index(drop=True)
+        rec_value = len(all_pred_events)
+        exp_value = len(events_)
+        assert rec_value < exp_value + 10 and rec_value > exp_value - 10 
+
+    def test_big(self, trial_big, config):
+        events_ = trial_big.events
+        all_pred_events = pd.DataFrame()
+        for type in EVENT_TYPES:
+            for side in SIDES:
+                detector = Desailly(config, side, type)
+                pred_times = detector.detect_events(trial_big)
+                pred_events = detector._create_data_frame(pred_times)
+                all_pred_events = pd.concat([all_pred_events, pred_events])
+                events_side = events_[(events_["context"] == side)&(events_["label"]==type)].time
+                errors, missed, excess = detector._get_accuracy(pred_times, events_side)
+                rec_value = np.abs(np.mean(errors))
+                exp_value = 0.2
+                assert rec_value < exp_value
+                rec_value = missed 
+                exp_value = 0.2
+                assert rec_value < exp_value
+                rec_value = excess
+                exp_value = 0.2
+                assert rec_value < exp_value
+                rec_value = (pred_events["context"] == side).sum()
+                exp_value = len(pred_events)
+                assert rec_value == exp_value
+                rec_value = (pred_events["label"] == type).sum()
+                exp_value = len(pred_events)
+                assert rec_value == exp_value
+        all_pred_events = all_pred_events.sort_values(by="time", ascending=True).reset_index(drop=True)
+        rec_value = len(all_pred_events)
+        exp_value = len(events_)
+        assert rec_value < exp_value + 10 and rec_value > exp_value - 10 
+
 class TestAC1:
     def test_small(self, trial_small, config):
         events_ = trial_small.events[trial_small.events["label"] == FOOT_STRIKE]
@@ -142,7 +205,7 @@ class TestAC1:
         pred_events = pd.DataFrame()
         for side in SIDES:
             detector = AC.get_AC1(config, side, FOOT_STRIKE, trial_ref=trial_ref)
-            pred_times = detector.detect_events(trial_small, parameters={"distance": 90})
+            pred_times = detector.detect_events(trial_small, {"distance": 90})
             pred_events = pd.concat([pred_events, detector._create_data_frame(pred_times)])
         pred_events = pred_events.sort_values(by="time", ascending=True).reset_index(drop=True)
         rec_value = len(pred_events)
@@ -174,7 +237,7 @@ class TestAC1:
         pred_events = pd.DataFrame()
         for side in SIDES:
             detector = AC.get_AC1(config, side, FOOT_STRIKE, trial_ref=trial_ref)
-            pred_times = detector.detect_events(trial_big, parameters={"distance": 90})
+            pred_times = detector.detect_events(trial_big, {"distance": 90})
             pred_events = pd.concat([pred_events, detector._create_data_frame(pred_times)])
         pred_events = pred_events.sort_values(by="time", ascending=True).reset_index(drop=True)
         pred_events = pred_events.drop(0).reset_index(drop=True)
@@ -208,7 +271,7 @@ class TestAC2:
         pred_events = pd.DataFrame()
         for side in SIDES:
             detector = AC.get_AC2(config, side, FOOT_STRIKE, trial_ref=trial_ref)
-            pred_times = detector.detect_events(trial_small, parameters={"distance": 90})
+            pred_times = detector.detect_events(trial_small, {"distance": 90})
             pred_events = pd.concat([pred_events, detector._create_data_frame(pred_times)])
         pred_events = pred_events.sort_values(by="time", ascending=True).reset_index(drop=True)
         rec_value = len(pred_events)
@@ -240,7 +303,7 @@ class TestAC2:
         pred_events = pd.DataFrame()
         for side in SIDES:
             detector = AC.get_AC2(config, side, FOOT_STRIKE, trial_ref=trial_ref)
-            pred_times = detector.detect_events(trial_big, parameters={"distance": 90})
+            pred_times = detector.detect_events(trial_big, {"distance": 90})
             pred_events = pd.concat([pred_events, detector._create_data_frame(pred_times)])
         pred_events = pred_events.sort_values(by="time", ascending=True).reset_index(drop=True)
         pred_events = pred_events.drop([0, 1]).reset_index(drop=True)
@@ -274,7 +337,7 @@ class TestAC3:
         pred_events = pd.DataFrame()
         for side in SIDES:
             detector = AC.get_AC3(config, side, FOOT_STRIKE, trial_ref=trial_ref)
-            pred_times = detector.detect_events(trial_small, parameters={"distance": 90})
+            pred_times = detector.detect_events(trial_small, {"distance": 90})
             pred_events = pd.concat([pred_events, detector._create_data_frame(pred_times)])
         pred_events = pred_events.sort_values(by="time", ascending=True).reset_index(drop=True)
         rec_value = len(pred_events)
@@ -306,7 +369,7 @@ class TestAC3:
         all_pred_events = pd.DataFrame()
         for side in SIDES:
             detector = AC.get_AC3(config, side, FOOT_STRIKE, trial_ref=trial_ref)
-            pred_times = detector.detect_events(trial_big, parameters={"distance": 90})
+            pred_times = detector.detect_events(trial_big, {"distance": 90})
             pred_events = detector._create_data_frame(pred_times)
             all_pred_events = pd.concat([all_pred_events, pred_events])
             events_side = events_[events_["context"] == side].time
@@ -339,7 +402,7 @@ class TestAC4:
         pred_events = pd.DataFrame()
         for side in SIDES:
             detector = AC.get_AC4(config, side, FOOT_STRIKE, trial_ref=trial_ref)
-            pred_times = detector.detect_events(trial_small, parameters={"distance": 90})
+            pred_times = detector.detect_events(trial_small, {"distance": 90})
             pred_events = pd.concat([pred_events, detector._create_data_frame(pred_times)])
         pred_events = pred_events.sort_values(by="time", ascending=True).reset_index(drop=True)
         rec_value = len(pred_events)
@@ -371,7 +434,7 @@ class TestAC4:
         pred_events = pd.DataFrame()
         for side in SIDES:
             detector = AC.get_AC4(config, side, FOOT_STRIKE, trial_ref=trial_ref)
-            pred_times = detector.detect_events(trial_big, parameters={"distance": 90})
+            pred_times = detector.detect_events(trial_big, {"distance": 90})
             pred_events = pd.concat([pred_events, detector._create_data_frame(pred_times)])
         pred_events = pred_events.sort_values(by="time", ascending=True).reset_index(drop=True)
         pred_events = pred_events.drop([0, 1]).reset_index(drop=True)
@@ -405,7 +468,7 @@ class TestAC5:
         pred_events = pd.DataFrame()
         for side in SIDES:
             detector = AC.get_AC5(config, side, FOOT_OFF, trial_ref=trial_ref)
-            pred_times = detector.detect_events(trial_small, parameters={"distance": 90})
+            pred_times = detector.detect_events(trial_small, {"distance": 90})
             pred_events = pd.concat([pred_events, detector._create_data_frame(pred_times)])
         pred_events = pred_events.sort_values(by="time", ascending=True).reset_index(drop=True)
         rec_value = len(pred_events)
@@ -437,7 +500,7 @@ class TestAC5:
         all_pred_events = pd.DataFrame()
         for side in SIDES:
             detector = AC.get_AC5(config, side, FOOT_OFF, trial_ref=trial_ref)
-            pred_times = detector.detect_events(trial_big, parameters={"distance": 90})
+            pred_times = detector.detect_events(trial_big, {"distance": 90})
             pred_events = detector._create_data_frame(pred_times)
             all_pred_events = pd.concat([all_pred_events, pred_events])
             events_side = events_[events_["context"] == side].time
@@ -470,7 +533,7 @@ class TestAC6:
         pred_events = pd.DataFrame()
         for side in SIDES:
             detector = AC.get_AC6(config, side, FOOT_OFF, trial_ref=trial_ref)
-            pred_times = detector.detect_events(trial_small, parameters={"distance": 90})
+            pred_times = detector.detect_events(trial_small, {"distance": 90})
             pred_events = pd.concat([pred_events, detector._create_data_frame(pred_times)])
         pred_events = pred_events.sort_values(by="time", ascending=True).reset_index(drop=True)
         rec_value = len(pred_events)
@@ -502,7 +565,7 @@ class TestAC6:
         all_pred_events = pd.DataFrame()
         for side in SIDES:
             detector = AC.get_AC6(config, side, FOOT_OFF, trial_ref=trial_ref)
-            pred_times = detector.detect_events(trial_big, parameters={"distance": 90})
+            pred_times = detector.detect_events(trial_big, {"distance": 90})
             pred_events = detector._create_data_frame(pred_times)
             all_pred_events = pd.concat([all_pred_events, pred_events])
             events_side = events_[events_["context"] == side].time
@@ -626,7 +689,11 @@ class TestAutoEventDetection:
         trial_ref = trial_small
         trial_ref.events = events.iloc[:8]
         auto_selection = AutoEventDetection(config, trial_ref)
-        event_detector = auto_selection.get_optimised_event_detectors()
+        event_detector, user_show = auto_selection.get_optimised_event_detectors()
+
+        rec_value = event_detector.hs_right._mean_error
+        exp_value = user_show[FOOT_STRIKE][RIGHT]["mean error"]
+        assert rec_value == exp_value
 
         for detector in [event_detector.hs_left, 
                          event_detector.hs_right, 
@@ -634,23 +701,23 @@ class TestAutoEventDetection:
                          event_detector.to_right]:
         
             rec_value = detector._mean_error - detector._offset
-            exp_value = 0.2
+            exp_value = 0.1
             assert rec_value < exp_value
 
             rec_value = detector._missed
-            exp_value = 0.2
+            exp_value = 0.1
             assert rec_value < exp_value
 
             rec_value = detector._excess
-            exp_value = 0.2
+            exp_value = 0.1
             assert rec_value < exp_value
 
             rec_value = detector._excess
-            exp_value = 0.2
+            exp_value = 0.1
             assert rec_value < exp_value
 
             rec_value = detector._quantiles[1] - detector._quantiles[0]
-            exp_value = 0.2
+            exp_value = 0.1
             assert rec_value < exp_value
     
     def test_big(self, trial_big, config):
@@ -658,30 +725,35 @@ class TestAutoEventDetection:
         trial_ref = trial_big
         trial_ref.events = events.iloc[:16]
         auto_selection = AutoEventDetection(config, trial_ref)
-        event_detector = auto_selection.get_optimised_event_detectors()
+        event_detector, user_show = auto_selection.get_optimised_event_detectors()
+
+        rec_value = event_detector.hs_right._mean_error
+        exp_value = user_show[FOOT_STRIKE][RIGHT]["mean error"]
+        assert rec_value == exp_value
+
         for detector in [event_detector.hs_left, 
                          event_detector.hs_right, 
                          event_detector.to_left, 
                          event_detector.to_right]:
 
             rec_value = detector._mean_error - detector._offset
-            exp_value = 0.2
+            exp_value = 0.1
             assert rec_value < exp_value
 
             rec_value = detector._missed
-            exp_value = 0.2
+            exp_value = 0.1
             assert rec_value < exp_value
 
             rec_value = detector._excess
-            exp_value = 0.2
+            exp_value = 0.1
             assert rec_value < exp_value
 
             rec_value = detector._excess
-            exp_value = 0.2
+            exp_value = 0.1
             assert rec_value < exp_value
 
             rec_value = detector._quantiles[1] - detector._quantiles[0]
-            exp_value = 0.2
+            exp_value = 0.1
             assert rec_value < exp_value
 
 class TestEventDetector:
@@ -691,7 +763,7 @@ class TestEventDetector:
                             Zeni(config, RIGHT, FOOT_STRIKE),
                             Zeni(config, LEFT, FOOT_OFF),
                             Zeni(config, RIGHT, FOOT_OFF))
-        pred_events = obj.detect_events(trial_small, parameters={"distance": 90})
+        pred_events = obj.detect_events(trial_small)
         events = events.drop(0).reset_index(drop=True)
         rec_value = len(pred_events)
         exp_value = len(events)
@@ -721,7 +793,7 @@ class TestEventDetector:
                             Zeni(config, RIGHT, FOOT_STRIKE),
                             Zeni(config, LEFT, FOOT_OFF),
                             Zeni(config, RIGHT, FOOT_OFF))
-        pred_events = obj.detect_events(trial_big, parameters={"distance": 90})
+        pred_events = obj.detect_events(trial_big)
         rec_value = len(pred_events)
         exp_value = len(events)
         assert rec_value == exp_value
@@ -836,6 +908,7 @@ class TestEventDetectorBuilder:
         assert rec_value == exp_value
 
 class TestReferenceFromGrf:
+
     def test_get_reference(self, trial_big, config):
         nb_gc = 5
         events= trial_big.events

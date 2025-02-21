@@ -120,7 +120,7 @@ def test_get_mixed_event_detector_ref():
 def find_optimal_detectors():
     config = api.load_config("./tests/pig_config.yaml")
     trial = api.load_c3d_trial("./tests/treadmill_events.c3d", config)
-    obj = find_optimal_detectors(trial, config, method_list = ["AC1", "AC6"])
+    obj, _ = find_optimal_detectors(trial, config, method_list = ["AC1", "AC6"])
     assert obj.hs_left._CODE == "AC1"
     assert obj.hs_right._CODE == "AC1"
     assert obj.to_left._CODE == "AC6"

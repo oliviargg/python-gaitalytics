@@ -9,7 +9,6 @@ import scipy as sp
 import xarray as xr
 
 ## to remove
-import matplotlib.pyplot as plt
 
 import gaitalytics.io as io
 import gaitalytics.mapping as mapping
@@ -290,7 +289,7 @@ class BaseEventDetection(ABC):
         """
         Adds a dictionary parameters as object's attribute
         """
-        self._parameters = parameters
+        self._parameters = parameters if not hasattr(self, "_parameters") else None
 
     @abstractmethod
     def _detect_events(self, trial: model.Trial) -> np.ndarray:
@@ -610,7 +609,7 @@ class BaseOptimisedEventDetection(BaseEventDetection, ABC):
         self._quantiles = self._compute_quantiles(errors)
         self._offset = self._compute_offset(self._mean_error, self._quantiles)
 
-    def _save_parameters(self, parameters):
+    def _save_parameters(self, parameters: dict):
         """
         Saves the optimisation parameters for event detection
         """
@@ -650,69 +649,6 @@ class BaseOptimisedEventDetection(BaseEventDetection, ABC):
             signal: signal according to time where events are detected
         """
         raise NotImplementedError
-
-
-# TODO: remove this class (only there for testing)
-class GrfTestEventDetection(BaseOptimisedEventDetection):
-    def __init__(self, configs, context, label, offset=0, trial_ref=None):
-        super().__init__(configs, context, label, offset, trial_ref)
-        self.frate = 100  # TODO Hz --> take it from c3d file. How?
-
-    def optimise(self, signal):
-        pass
-
-    def _get_range(self, group):
-        if self._label == FOOT_STRIKE:
-            return range(len(group) - 1)
-        else:
-            return range(len(group) - 1, 0, -1)
-
-    def processing_masked_signal(self, grf_signal):
-        nan_mask = np.isnan(grf_signal.data).astype(int)
-        non_nan_groups = np.split(
-            np.arange(len(grf_signal)), np.where(nan_mask[:-1] & ~nan_mask[1:])[0] + 1
-        )
-
-        min_duration = 60
-        for group in non_nan_groups:
-            if len(group) < min_duration:
-                grf_signal[group] = np.nan
-
-        nan_mask_ = np.isnan(grf_signal.data).astype(int)
-        non_nan_groups_ = np.split(
-            np.arange(len(grf_signal)), np.where(nan_mask_[:-1] & ~nan_mask_[1:])[0] + 1
-        )
-
-        zero_threshold = 5
-        for group_ in non_nan_groups_:
-            close_to_zero = np.abs(grf_signal[group_].data) < zero_threshold
-            for i, j in enumerate(self._get_range(group_)):
-                if close_to_zero[j] and close_to_zero[self._get_range(group_)[i + 1]]:
-                    grf_signal[group_[j]] = np.nan
-                elif np.isnan(grf_signal[group_].data[j]):
-                    continue
-                else:
-                    break
-        return grf_signal
-
-    def _detect_events(self, trial):
-        GRF_3d = mocap.get_marker_data(
-            trial,
-            self._configs,
-            mapping.MappedMarkers.L_GRF
-            if self._context == LEFT
-            else mapping.MappedMarkers.R_GRF,
-        )
-        GRF = GRF_3d.loc["z"]
-        GRF_processed = self.processing_masked_signal(GRF)
-        nan_mask = np.isnan(GRF_processed.data).astype(int)
-        if self._label == FOOT_STRIKE:
-            index = np.where((~nan_mask[1:]) & (nan_mask[:-1]))[0] + 1
-        else:
-            index = np.where((nan_mask[1:]) & (~nan_mask[:-1]))[0]
-        time_ = GRF.time.data
-        events = time_[index]
-        return events
 
 
 class PeakEventDetection(BaseOptimisedEventDetection, ABC):
@@ -808,23 +744,21 @@ class PeakEventDetection(BaseOptimisedEventDetection, ABC):
             np.ndarray: An array containing the timings of the detected events.
         """
 
-        if hasattr(self, "_parameters"):
+        if hasattr(self, "_parameters") and self._parameters is not None:
             parameters = self._parameters
-            distance = (
-                parameters["distance"] if "distance" in parameters.keys() else None
-            )
-            prominence = (
-                parameters["prominence"] if "prominence" in parameters.keys() else None
-            )
-            height = parameters["height"] if "height" in parameters.keys() else None
+            distance = parameters.get("distance")
+            prominence = parameters.get("prominence")
+            height = parameters.get("height")
         else:
             parameters = None
         points = self._get_relevant_channels(trial)
         method = self._get_output(points)
         method = self.normalize(method)
-        if parameters is None:
+        if parameters is None and self.trial_ref is not None:
             index, parameters = self.optimise(method)
             self._save_parameters(parameters)
+        elif parameters is None and self.trial_ref is None:
+            index, _ = sp.signal.find_peaks(-method, distance=90)
         else:
             index, _ = sp.signal.find_peaks(
                 -method,
@@ -1593,7 +1527,11 @@ class ReferenceFromGrf:
     _REF_EVENTS = "ref"
 
     def __init__(
-        self, grf_events: pd.DataFrame, trial: model.Trial, config: mapping.MappingConfigs, gait_cycles_ref: int = 15
+        self,
+        grf_events: pd.DataFrame,
+        trial: model.Trial,
+        config: mapping.MappingConfigs,
+        gait_cycles_ref: int = 15,
     ):
         """Initialization of an instance of the ReferenceFromGrf class
 
@@ -1669,7 +1607,7 @@ class ReferenceFromGrf:
         Returns:
             pd.DataFrame: same event table with added column specifying which event meets the condition
         """
-        threshold = 250  # TODO: find more appropriate threshold
+        threshold = 0.125  # arbitrary threshold
         grf_events[self._COND_3] = [True] * len(grf_events)
         window_size = 10
         for context, GRF in zip(SIDES, [GRF_l, GRF_r]):
@@ -1678,27 +1616,33 @@ class ReferenceFromGrf:
             labels = events_all[self._LABEL_COLUMN]
             grf_windows = np.zeros((events.shape[0], window_size))
             for i, event in enumerate(events):
-                if labels.iloc[i] == FOOT_OFF:
+                edge_TO = event - (window_size - 1) / frate
+                edge_HS = event + (window_size - 1) / frate
+                if labels.iloc[i] == FOOT_OFF and edge_TO >= GRF.time.data[0]:
                     rge = np.linspace(
-                        event - (window_size - 1) / frate,
+                        edge_TO,
                         event,
+                        window_size,
+                        endpoint=True,
+                    )
+                elif labels.iloc[i] == FOOT_STRIKE and edge_HS <= GRF.time.data[-1]:
+                    rge = np.linspace(
+                        event,
+                        edge_HS,
                         window_size,
                         endpoint=True,
                     )
                 else:
-                    rge = np.linspace(
-                        event,
-                        event + (window_size - 1) / frate,
-                        window_size,
-                        endpoint=True,
-                    )
+                    continue
                 grf_windows[i] = GRF.loc["z"][
                     np.isin(GRF.time.data.astype("float32"), rge.astype("float32"))
                 ].data
-            derivatives = np.nanmean(
-                (grf_windows[:, 1:] - grf_windows[:, :-1]) * frate, axis=0
+            derivatives = (grf_windows[:, 1:] - grf_windows[:, :-1]) * frate
+            max_der = np.nanmax(derivatives, axis=0)
+            mean_derivatives = np.nanmean(derivatives, axis=0)
+            idx = np.squeeze(
+                np.argwhere(np.abs(mean_derivatives) < threshold * max_der)
             )
-            idx = np.squeeze(np.argwhere(np.abs(derivatives) < threshold))
             grf_events.loc[idx, self._COND_3] = [False] * len(idx)
         return grf_events
 
@@ -1748,13 +1692,13 @@ class ReferenceFromGrf:
         out_events = self._condition_4(out_events)
         out_events[self._COND_TOTAL] = [True] * len(grf_events)
         out_events[self._REF_EVENTS] = [False] * len(grf_events)
-        #For each event, see if every condition is met
+        # For each event, see if every condition is met
         for cond in [self._COND_1, self._COND_2, self._COND_3, self._COND_4]:
             if cond in out_events.columns:
                 out_events[self._COND_TOTAL] = out_events.apply(
                     lambda x: x[self._COND_TOTAL] * x[cond], axis=1
                 )
-        #select the events that will be taken as reference (number of gait_cycles defined by self.gait_cycles_ref)
+        # select the events that will be taken as reference (number of gait_cycles defined by self.gait_cycles_ref)
         for i in range(correct_size, len(grf_events)):
             ref = (
                 out_events.loc[i - correct_size : (i - 1), self._COND_TOTAL].sum()
@@ -1804,15 +1748,15 @@ class AutoEventDetection:
         self.trial_ref = trial_ref
         self.method_list = method_list
 
-    def get_optimised_event_detectors(self) -> EventDetector:
+    def get_optimised_event_detectors(self) -> tuple[EventDetector, dict]:
         """Performs event detection using all the specified methods on the reference trial, and selects the best performing one
+        Also returns feedback for user
 
         Returns:
             EventDetector: instance of EventDetector class containing the optimized event detectors for each event type and side
+            user_show : dict containing the performance of all selected methods, as well as the parameters used to find the events
         """
-        # TODO: optimise cut trial
         opt_detectors: dict[str, dict] = {FOOT_STRIKE: {}, FOOT_OFF: {}}
-        event_detectors_ = []  # TODO: remove (here only for testing)
         for label in EVENT_TYPES:
             for context in SIDES:
                 opt = np.zeros(len(self.method_list))
@@ -1841,9 +1785,6 @@ class AutoEventDetection:
                         ]
                         errors, missed, excess = event_detector._get_accuracy(times)
                         event_detector._save_performance(errors, missed, excess)
-                        event_detectors_.append(
-                            event_detector
-                        )  # TODO: remove (here only for testing)
                         opt[idx] = self._optim_function(event_detector)
                     event_detectors.append(event_detector)
                 index = np.argmax(opt)
@@ -1854,10 +1795,37 @@ class AutoEventDetection:
             opt_detectors[FOOT_OFF][LEFT],
             opt_detectors[FOOT_OFF][RIGHT],
         )
-        self.event_detectors = event_detectors_  # TODO: remove (here only for testing)
-        return event_detector
+        user_show: dict = self.create_user_indicatation(opt_detectors)
+        return event_detector, user_show
 
-    def _optim_function(self, detector: BaseOptimisedEventDetection) -> float:
+    @staticmethod
+    def create_user_indicatation(opt_detectors):
+        """Creates a dictionary containing the performance and detection parameters of each selected methods
+        for user feedback
+
+        Args:
+            opt_detectors: dictionary containing the BaseOptimisedEventDetection object slected for each event types and sides
+
+        Returns:
+            dictionary with performance and parameters information for each method selected
+        """
+        user_show: dict = {}
+        for label in EVENT_TYPES:
+            user_show[label] = {}
+            for context in SIDES:
+                detector = opt_detectors[label][context]
+                user_show[label][context] = {
+                    "method": detector._CODE,
+                    "mean error": detector._mean_error,
+                    "missed": detector._missed,
+                    "excess": detector._excess,
+                    "quantiles": detector._quantiles,
+                    "parameters": detector._parameters,
+                }
+        return user_show
+
+    @staticmethod
+    def _optim_function(detector: BaseOptimisedEventDetection) -> float:
         """Computes the result of the optimisation function for a specific event detector
 
         Args:
@@ -1875,93 +1843,3 @@ class AutoEventDetection:
             + 0.5 * (1 - detector._missed)
             + 0.5 * (1 - detector._excess)
         )
-
-    ##TODO: TO BE DELETED (only there for testing)
-    def plot_accuracies(self):
-        nb_methods = len(self.event_detectors)
-        fig, ax = plt.subplots(3, 1, figsize=(12, 6), sharex=True)
-        fig.tight_layout()
-        x_ = range(nb_methods)
-        ax[0].hlines(y=0, xmin=0, xmax=np.max(x_), colors="black")
-        ax[0].scatter(
-            x=range(nb_methods),
-            y=[self.event_detectors[i]._mean_error for i in range(nb_methods)],
-            marker="_",
-            color="tab:blue",
-        )
-        ax[0].scatter(
-            x=range(nb_methods),
-            y=[self.event_detectors[i]._quantiles[0] for i in range(nb_methods)],
-            marker="2",
-            color="tab:blue",
-        )
-        ax[0].scatter(
-            x=range(nb_methods),
-            y=[self.event_detectors[i]._quantiles[1] for i in range(nb_methods)],
-            marker="1",
-            color="tab:blue",
-        )
-        ax[0].vlines(
-            x=range(nb_methods),
-            ymin=[self.event_detectors[i]._quantiles[0] for i in range(nb_methods)],
-            ymax=[self.event_detectors[i]._quantiles[1] for i in range(nb_methods)],
-            colors="tab:blue",
-        )
-
-        width_bar = 0.8
-        y_m = np.array([self.event_detectors[i]._missed for i in range(nb_methods)])
-        y_e = np.array([self.event_detectors[i]._excess for i in range(nb_methods)])
-        for k, (y_, m_type) in enumerate(zip([y_m, y_e], ["Missed", "Excess"])):
-            ax[k + 1].bar(x=x_, height=y_ * 100, width=width_bar)
-            for i in range(len(x_)):
-                ax[k + 1].text(
-                    x=x_[i] - 0.4 * width_bar,
-                    y=y_[i] * 100,
-                    s=str(np.round(y_[i] * 100, decimals=1)) + "%",
-                    fontsize="medium",
-                )
-
-            max = (
-                np.max(
-                    [
-                        self.event_detectors[i]._missed
-                        if m_type == "Missed"
-                        else self.event_detectors[i]._excess
-                        for i in range(nb_methods)
-                    ]
-                )
-                * 100
-            )
-            ax[k + 1].set_ylim([0, max])
-            ax[k + 1].set_title(
-                f"Percentage of {m_type} detected events for each method"
-            )
-            ax[k + 1].set_ylabel(m_type + " detected events")
-            if max < 20:
-                ax[k + 1].set_yticks(
-                    np.arange(0, max + 2, 2),
-                    [str(int(k)) + "%" for k in np.arange(0, max + 2, 2)],
-                )
-            else:
-                ax[k + 1].set_yticks(
-                    np.arange(0, np.round(max + 20, decimals=20), 20),
-                    [str(int(k)) + "%" for k in np.arange(0, max + 20, 20)],
-                )
-        ax[0].set_yticks(np.arange(-0.5, 0.6, 0.1))
-        ax[0].set_ylim([-0.5, 0.5])
-        ax[0].set_ylabel("Error [s]")
-        ax[0].set_title("Error of event detection for each method")
-        ax[0].grid()
-        ax[2].set_xticks(
-            x_,
-            [
-                self.event_detectors[i]._label
-                + " "
-                + self.event_detectors[i]._CODE
-                + " "
-                + self.event_detectors[i]._context
-                for i in range(nb_methods)
-            ],
-            rotation=90,
-        )
-        plt.show()

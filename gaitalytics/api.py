@@ -195,8 +195,9 @@ def find_optimal_detectors(
     trial_ref: model.Trial,
     config: mapping.MappingConfigs,
     method_list: list[str] = ["Zen", "Des", "AC1", "AC2", "AC3", "AC4", "AC5", "AC6"],
-) -> events.EventDetector:
+) -> tuple[events.EventDetector, dict]:
     """Finds the set of best methods that best detect all Gait Event types on a short labeled reference trial
+    Also returns feedback for user
 
     Args:
         trial_ref: The reference trial with some labeled gait events
@@ -207,24 +208,49 @@ def find_optimal_detectors(
                         - "AC1" to "AC6" will test the Autocorrelation 1 to 6 methods
     Returns:
         An EventDetector object with optimized detection methods for each gait event
+        user_show : dict containing the performance of all selected methods, as well as the parameters used to find the events
     """
     method_list_mapping = [
         events.EventDetectorBuilder.get_method(name) for name in method_list
     ]
     auto_obj = events.AutoEventDetection(config, trial_ref, method_list_mapping)
-    event_detector = auto_obj.get_optimised_event_detectors()
-    # auto_obj.plot_accuracies()  # TODO: delete
-    return event_detector
+    event_detector, user_show = auto_obj.get_optimised_event_detectors()
+    return event_detector, user_show
 
 
 def get_ref_from_GRF(
     trial: model.Trial, config: mapping.MappingConfigs, gait_cycles_ref: int = 15
-):
+) -> model.Trial:
+    """Creates a reference set of events detected with Ground Reaction Forces (if available) for the given trial.
+    The detected events meet the following set of conditions:
+    1. Events are regularly spaced (not too close and not too far apart)
+    2. Detected events should have a GRF value close to 0
+    3. Event should be followed/preceded by a large slope
+    4. Order of events is correct
+    If the required number of events is not found, an error is raised¨
+
+    Args:
+        trial: The trial whose events to be detected and used as reference
+        config: The mapping configurations
+        gait_cycles_ref: number of gait cycles to use as reference. Default is 15
+
+    Returns:
+        Trial: the same trial with detected events as attributes
+
+    Raises:
+        ValueError if no events have been selected to use as reference
+    """
     event_detector = get_GRF_event_detector(config)
     events_table = detect_events(trial, event_detector)
 
     obj = events.ReferenceFromGrf(events_table, trial, config, gait_cycles_ref)
-    return obj.get_reference()
+    trial_ref = obj.get_reference()
+    if trial_ref.events is not None and not trial_ref.events.empty:
+        return trial_ref
+    else:
+        raise ValueError(
+            "No valid events detected with GRF. Try manually labeling events to use as reference"
+        )
 
 
 def check_events(event_table: pd.DataFrame, method: str = "sequence"):
